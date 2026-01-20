@@ -1,0 +1,37 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    @apply font-body text-ink-900 bg-sky-50;
+  }
+
+  h1, h2, h3, h4 {
+    @apply font-display;
+  }
+}
+
+@layer utilities {
+  .bg-atmos {
+    background-image:
+      radial-gradient(900px 480px at 10% -10%, rgba(198, 220, 255, 0.9), transparent 60%),
+      radial-gradient(800px 420px at 100% 0%, rgba(155, 194, 255, 0.7), transparent 55%),
+      linear-gradient(135deg, #f2f7ff 0%, #ffffff 45%, #eef4ff 100%);
+    background-size: 200% 200%;
+  }
+
+  .bg-grid {
+    background-image: linear-gradient(rgba(32, 86, 209, 0.08) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(32, 86, 209, 0.08) 1px, transparent 1px);
+    background-size: 28px 28px;
+  }
+
+  .text-balance {
+    text-wrap: balance;
+  }
+}
