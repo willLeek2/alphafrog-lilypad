@@ -27,9 +27,9 @@ module.exports = {
         body: ["IBM Plex Sans", "ui-sans-serif", "system-ui"],
       },
       borderRadius: {
-        xl: "1rem",
-        "2xl": "1.25rem",
-        "3xl": "1.5rem",
+        xl: "0.5rem",
+        "2xl": "0.75rem",
+        "3xl": "1rem",
       },
       boxShadow: {
         card: "0 18px 40px -22px rgba(14, 52, 120, 0.45)",

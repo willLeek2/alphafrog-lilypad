@@ -9,4 +9,14 @@ export default defineConfig({
   preview: {
     port: 31127,
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          'vendor-ui': ['@xyflow/react', 'lucide-react', 'date-fns', 'zustand'],
+        },
+      },
+    },
+  },
 });

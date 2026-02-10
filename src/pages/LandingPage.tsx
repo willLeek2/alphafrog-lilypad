@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import ActionButton from "../components/ActionButton";
 import FeatureCard from "../components/FeatureCard";
 import SectionHeading from "../components/SectionHeading";
@@ -9,12 +10,7 @@ import {
   visionPoints,
 } from "../data/landing";
 
-type LandingPageProps = {
-  onPrimaryAction: () => void;
-  onSecondaryAction: () => void;
-};
-
-const LandingPage = ({ onPrimaryAction, onSecondaryAction }: LandingPageProps) => (
+const LandingPage = () => (
   <div className="space-y-20 pb-24">
     <section className="px-6 pt-12 md:pt-20">
       <div className="mx-auto grid w-full max-w-6xl gap-10 lg:grid-cols-[1.1fr_0.9fr]">
@@ -30,8 +26,10 @@ const LandingPage = ({ onPrimaryAction, onSecondaryAction }: LandingPageProps) =
             layer, so you can move from raw market data to portfolio insight in minutes.
           </p>
           <div className="flex flex-wrap gap-3">
-            <ActionButton onClick={onPrimaryAction}>Enter Workspace</ActionButton>
-            <ActionButton variant="outline" onClick={onSecondaryAction}>
+            <Link to="/agent/chat">
+              <ActionButton>Enter Workspace</ActionButton>
+            </Link>
+            <ActionButton variant="outline" onClick={() => alert('Demo 功能即将上线')}>
               Request Demo
             </ActionButton>
           </div>
@@ -168,12 +166,13 @@ const LandingPage = ({ onPrimaryAction, onSecondaryAction }: LandingPageProps) =
                 Activate the AlphaFrog workspace and test the agent-powered analysis flow.
               </p>
             </div>
-            <ActionButton
-              className="bg-white text-sky-700 hover:bg-sky-50"
-              onClick={onPrimaryAction}
-            >
-              Launch AlphaFrog
-            </ActionButton>
+            <Link to="/agent/chat">
+              <ActionButton
+                className="bg-white text-sky-700 hover:bg-sky-50"
+              >
+                Launch AlphaFrog
+              </ActionButton>
+            </Link>
           </div>
         </div>
       </div>
