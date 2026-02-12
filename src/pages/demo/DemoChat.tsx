@@ -20,10 +20,10 @@ interface Artifact {
   size: string;
 }
 
-// Mock Data
+// Mock Data - A股市场主题
 const MOCK_SESSIONS = [
-  { id: 1, title: '半导体 ETF 深度分析', time: '2 分钟前', active: true },
-  { id: 2, title: '新能源车市场增长报告', time: '昨天', active: false },
+  { id: 1, title: '沪深300成分股估值分析', time: '2 分钟前', active: true },
+  { id: 2, title: '新能源产业链调研报告', time: '昨天', active: false },
   { id: 3, title: 'Q1 投资组合再平衡建议', time: '2 天前', active: false },
 ];
 
@@ -31,42 +31,55 @@ const MOCK_MESSAGES: Message[] = [
   {
     id: '1',
     role: 'user',
-    content: '能帮我分析一下上个季度排名前 5 的半导体 ETF 相比基准指数的表现吗？',
+    content: '请帮我分析一下沪深300指数最近一个月的估值变化情况，以及主要行业的PE/PB分布。',
     timestamp: new Date(Date.now() - 1000 * 60 * 5),
   },
   {
     id: '2',
     role: 'agent',
-    content: '好的，我将为您分析排名前 5 的半导体 ETF。首先，我需要确认这些 ETF 的代码，然后获取它们的表现数据，并与标普 500 指数基准进行对比。',
+    content: '好的，我将为您分析沪深300指数最近一个月的估值变化。首先获取指数成分股的最新数据，然后计算各主要行业的估值指标分布。',
     timestamp: new Date(Date.now() - 1000 * 60 * 4),
     isThinking: true,
   },
   {
     id: '3',
     role: 'agent',
-    content: `这是上个季度主要半导体 ETF (SMH, SOXX, XSD, PSI, FTXL) 与 SPY 的对比分析结果。
+    content: `这是沪深300指数最近一个月的估值分析报告。
 
-从图表中可以看出，SMH 的表现跑赢了基准指数 12%。主要得益于其持仓中 NVIDIA 和 TSMC 的强劲表现。`,
+截至最新交易日，沪深300指数PE(TTM)为 12.35 倍，较上月下降 3.2%；PB(LF)为 1.28 倍，处于近五年 35% 分位。
+
+行业估值分布方面：
+• 金融板块：PE 6.8x（低估）
+• 消费板块：PE 24.5x（合理偏高）
+• 医药板块：PE 28.3x（偏高）
+• 新能源：PE 18.2x（合理）`,
     timestamp: new Date(Date.now() - 1000 * 60 * 2),
-    cost: 15,
+    cost: 18,
     artifacts: [
-      { id: 'a1', name: 'semiconductor_etf_comparison.csv', type: 'csv', size: '12KB' },
-      { id: 'a2', name: 'analysis_report.pdf', type: 'pdf', size: '2.4MB' },
+      { id: 'a1', name: 'hs300_valuation_analysis.csv', type: 'csv', size: '28KB' },
+      { id: 'a2', name: 'sector_pe_pb_distribution.pdf', type: 'pdf', size: '3.2MB' },
     ]
   }
 ];
 
+// 从后端 agent-llm.local.json 配置映射的模型列表
+// 多个 endpoint 可以 serve 同一个模型时，在显示名称后加上 endpoint 标识
+// 使用 compositeId 作为唯一标识: "modelId@endpoint"
 const models = [
-  { id: 'deepseek-v3', name: 'DeepSeek-V3 (推荐)' },
-  { id: 'gpt-4o', name: 'GPT-4o' },
-  { id: 'claude-3-5', name: 'Claude 3.5 Sonnet' },
-  { id: 'gemini-1.5', name: 'Gemini 1.5 Pro' },
+  { id: 'accounts/fireworks/models/kimi-k2p5', name: 'Kimi K2.5 (Fireworks)', endpoint: 'fireworks', compositeId: 'accounts/fireworks/models/kimi-k2p5@fireworks' },
+  { id: 'openai/gpt-5.2', name: 'GPT-5.2 (OpenRouter)', endpoint: 'openrouter', compositeId: 'openai/gpt-5.2@openrouter' },
+  { id: 'openai/gpt-5.1', name: 'GPT-5.1 (OpenRouter)', endpoint: 'openrouter', compositeId: 'openai/gpt-5.1@openrouter' },
+  { id: 'openai/gpt-5.2', name: 'GPT-5.2 (OpenAI)', endpoint: 'openai', compositeId: 'openai/gpt-5.2@openai' },
+  { id: 'openai/gpt-5.1', name: 'GPT-5.1 (OpenAI)', endpoint: 'openai', compositeId: 'openai/gpt-5.1@openai' },
 ];
 
+// 市场区域搜索源
 const searchSources = [
-  { id: 'google', name: 'Google Search' },
-  { id: 'bing', name: 'Bing Search' },
-  { id: 'perplexity', name: 'Perplexity AI' },
+  { id: 'ah_market', name: 'AH市场', desc: 'A股及港股相关资讯' },
+  { id: 'us_market', name: '美国市场', desc: '美股及美股中概相关资讯' },
+  { id: 'apac_market', name: '亚太市场', desc: '日韩东南亚等市场资讯' },
+  { id: 'eu_market', name: '欧洲市场', desc: '欧洲主要市场资讯' },
+  { id: 'emerging_market', name: '其他新兴市场', desc: '拉美、中东、非洲等市场' },
 ];
 
 const retrievalSources = [
@@ -82,15 +95,16 @@ const DemoChat = () => {
   const [credits, setCredits] = useState(2450);
   
   // Controls State
-  const [selectedModel, setSelectedModel] = useState(models[0]);
+  const [selectedModel, setSelectedModel] = useState(models[0]); // 默认选择第一个模型
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
   
   const [useWebSearch, setUseWebSearch] = useState(true);
   const [webSearchDropdownOpen, setWebSearchDropdownOpen] = useState(false);
-  const [selectedSearchSource, setSelectedSearchSource] = useState(searchSources[0]);
+  const [selectedSearchSources, setSelectedSearchSources] = useState<string[]>(['ah_market']);
 
   const [codeIntensityOpen, setCodeIntensityOpen] = useState(false);
-  const [codeIntensity, setCodeIntensity] = useState(500); // 10 - 500 - 1000(Unlimited)
+  const [codeIntensity, setCodeIntensity] = useState(500); // 10 - 500, 或 unlimited (1000)
+  const [sliderValue, setSliderValue] = useState(50); // 滑动条视觉值 0-100，用于控制非线性映射
   
   const [retrievalOpen, setRetrievalOpen] = useState(false);
   const [selectedRetrieval, setSelectedRetrieval] = useState<string[]>(['news']);
@@ -128,18 +142,33 @@ const DemoChat = () => {
     return `${val} Credits`;
   };
 
+  // 将滑动条视觉值 (0-100) 映射到实际 credit 值
+  // 0-50 -> 10-500 (正常区域)
+  // 50-100 -> 死区，释放后如果 > 70 则跳到 1000 (无限制)
+  const handleSliderChange = (visualValue: number) => {
+    setSliderValue(visualValue);
+    if (visualValue <= 50) {
+      // 0-50 映射到 10-500
+      const actualValue = Math.round(10 + (visualValue / 50) * 490);
+      setCodeIntensity(actualValue);
+    } else if (visualValue >= 70) {
+      // 70-100 区域直接跳到无限制
+      setCodeIntensity(1000);
+    }
+    // 50-70 是死区，保持当前值不变
+  };
+
+  // 根据实际值计算视觉值（用于初始化）
+  const getVisualValueFromActual = (actual: number): number => {
+    if (actual >= 1000) return 100;
+    // 10-500 映射到 0-50
+    return ((actual - 10) / 490) * 50;
+  };
+
   return (
     <DemoLayout>
-      <div className="relative flex h-[calc(100vh-8rem)] gap-6 overflow-hidden">
+      <div className="flex h-[calc(100vh-8rem)] gap-6 overflow-hidden">
         
-        {/* Credit Display Overlay - positioned absolutely in top right of chat area */}
-        <div className="absolute top-4 right-6 z-10 rounded-full bg-white/80 backdrop-blur border border-sky-100 px-3 py-1 shadow-sm">
-           <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-600">
-              <Coins size={14} />
-              <span>可用额度: {credits}</span>
-           </div>
-        </div>
-
         {/* Sessions Sidebar */}
         <div className="w-64 flex-shrink-0 flex flex-col rounded-lg border border-sky-100 bg-white shadow-sm">
           <div className="border-b border-sky-50 p-4">
@@ -166,10 +195,17 @@ const DemoChat = () => {
               ))}
             </div>
           </div>
+          {/* Credit Display - at bottom of sidebar */}
+          <div className="border-t border-sky-50 p-3">
+            <div className="flex items-center justify-center gap-2 rounded-lg bg-emerald-50 border border-emerald-100 px-3 py-2">
+              <Coins size={14} className="text-emerald-600" />
+              <span className="text-xs font-medium text-emerald-700">可用额度: {credits}</span>
+            </div>
+          </div>
         </div>
 
         {/* Chat Area */}
-        <div className="flex flex-1 flex-col rounded-lg border border-sky-100 bg-white shadow-sm overflow-hidden relative">
+        <div className="flex flex-1 flex-col rounded-lg border border-sky-100 bg-white shadow-sm overflow-hidden">
           {/* Messages */}
           <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-50/30 pb-20">
             {messages.map((msg) => (
@@ -254,15 +290,15 @@ const DemoChat = () => {
                 </button>
                 
                 {modelDropdownOpen && (
-                  <div className="absolute bottom-full left-0 mb-2 w-48 rounded-lg border border-sky-100 bg-white shadow-lg py-1 z-30">
+                  <div className="absolute bottom-full left-0 mb-2 w-56 rounded-lg border border-sky-100 bg-white shadow-lg py-1 z-30">
                     {models.map(model => (
                       <button
-                        key={model.id}
+                        key={model.compositeId}
                         onClick={() => {
                           setSelectedModel(model);
                           setModelDropdownOpen(false);
                         }}
-                        className={`w-full px-4 py-2 text-left text-xs hover:bg-sky-50 ${selectedModel.id === model.id ? 'text-sky-700 font-medium bg-sky-50' : 'text-ink-700'}`}
+                        className={`w-full px-4 py-2 text-left text-xs hover:bg-sky-50 ${selectedModel.compositeId === model.compositeId ? 'text-sky-700 font-medium bg-sky-50' : 'text-ink-700'}`}
                       >
                         {model.name}
                       </button>
@@ -273,44 +309,70 @@ const DemoChat = () => {
               
               {/* Right: Feature Toggles */}
               <div className="flex items-center gap-3">
-                 {/* 1. Web Search with Source Selection */}
+                 {/* 1. Web Search with Multi-Source Selection */}
                  <div className="relative">
                     <button 
                       onClick={() => setWebSearchDropdownOpen(!webSearchDropdownOpen)}
                       className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs border transition-colors ${useWebSearch ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-white text-ink-400 border-transparent hover:bg-gray-50'}`}
                     >
                       <Globe size={12} />
-                      {useWebSearch ? selectedSearchSource.name : '联网搜索'}
+                      {useWebSearch 
+                        ? (selectedSearchSources.length === 1 
+                            ? searchSources.find(s => s.id === selectedSearchSources[0])?.name 
+                            : `已选 ${selectedSearchSources.length} 个市场`)
+                        : '联网搜索'}
                       {useWebSearch && <ChevronDown size={10} />}
                     </button>
                     
                     {webSearchDropdownOpen && (
-                      <div className="absolute bottom-full right-0 mb-2 w-40 rounded-lg border border-sky-100 bg-white shadow-lg py-1 z-30">
-                        <div className="px-3 py-2 text-[10px] font-semibold text-ink-400 uppercase tracking-wider">选择搜索源</div>
+                      <div className="absolute bottom-full right-0 mb-2 w-56 rounded-lg border border-sky-100 bg-white shadow-lg py-1 z-30">
+                        <div className="px-3 py-2 text-[10px] font-semibold text-ink-400 uppercase tracking-wider">选择市场区域（可多选）</div>
                         <button
-                          onClick={() => { setUseWebSearch(!useWebSearch); setWebSearchDropdownOpen(false); }}
+                          onClick={() => { 
+                            setUseWebSearch(!useWebSearch); 
+                            if (!useWebSearch) setSelectedSearchSources(['ah_market']);
+                            setWebSearchDropdownOpen(false); 
+                          }}
                           className="w-full px-4 py-2 text-left text-xs hover:bg-gray-50 text-ink-700 border-b border-gray-50"
                         >
                            {useWebSearch ? '关闭搜索' : '开启搜索'}
                         </button>
-                        {searchSources.map(source => (
-                          <button
-                            key={source.id}
-                            onClick={() => {
-                              setSelectedSearchSource(source);
-                              setUseWebSearch(true);
-                              setWebSearchDropdownOpen(false);
-                            }}
-                            className={`w-full px-4 py-2 text-left text-xs hover:bg-sky-50 ${useWebSearch && selectedSearchSource.id === source.id ? 'text-blue-700 font-medium' : 'text-ink-700'}`}
-                          >
-                            {source.name}
-                          </button>
-                        ))}
+                        {useWebSearch && searchSources.map(source => {
+                          const isSelected = selectedSearchSources.includes(source.id);
+                          return (
+                            <button
+                              key={source.id}
+                              onClick={() => {
+                                if (isSelected) {
+                                  // 至少保留一个选中
+                                  if (selectedSearchSources.length > 1) {
+                                    setSelectedSearchSources(prev => prev.filter(id => id !== source.id));
+                                  }
+                                } else {
+                                  setSelectedSearchSources(prev => [...prev, source.id]);
+                                }
+                              }}
+                              className={`w-full px-4 py-2 flex items-start gap-2 text-left hover:bg-sky-50 ${isSelected ? 'bg-sky-50/50' : ''}`}
+                            >
+                              <div className={`w-4 h-4 rounded border flex items-center justify-center mt-0.5 flex-shrink-0 ${isSelected ? 'bg-blue-500 border-blue-500' : 'border-gray-300'}`}>
+                                {isSelected && <Search size={9} className="text-white" />}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className={`text-xs font-medium ${isSelected ? 'text-blue-700' : 'text-ink-700'}`}>
+                                  {source.name}
+                                </div>
+                                <div className="text-[10px] text-ink-400 truncate">
+                                  {source.desc}
+                                </div>
+                              </div>
+                            </button>
+                          );
+                        })}
                       </div>
                     )}
                  </div>
 
-                 {/* 2. Programming Intensity Slider */}
+                 {/* 2. Programming Intensity Slider - 非线性映射，500-1000 是死区 */}
                  <div className="relative">
                     <button 
                       onClick={() => setCodeIntensityOpen(!codeIntensityOpen)}
@@ -321,24 +383,54 @@ const DemoChat = () => {
                     </button>
                     
                     {codeIntensityOpen && (
-                      <div className="absolute bottom-full right-0 mb-2 w-64 rounded-lg border border-sky-100 bg-white shadow-lg p-4 z-30">
+                      <div className="absolute bottom-full right-0 mb-2 w-72 rounded-lg border border-sky-100 bg-white shadow-lg p-4 z-30">
                          <div className="flex justify-between items-center mb-2">
                             <span className="text-xs font-semibold text-ink-700">计算强度上限</span>
                             <span className="text-xs font-mono text-amber-600">{getIntensityLabel(codeIntensity)}</span>
                          </div>
                          <input 
                            type="range" 
-                           min="10" 
-                           max="1000" 
-                           step="10"
-                           value={codeIntensity}
-                           onChange={(e) => setCodeIntensity(Number(e.target.value))}
+                           min="0" 
+                           max="100" 
+                           step="1"
+                           value={sliderValue}
+                           onChange={(e) => handleSliderChange(Number(e.target.value))}
+                           onMouseUp={() => {
+                             // 释放时，如果在死区(50-70)，回弹到 500
+                             if (sliderValue > 50 && sliderValue < 70) {
+                               setSliderValue(50);
+                               setCodeIntensity(500);
+                             }
+                           }}
+                           onTouchEnd={() => {
+                             // 触摸结束时同样处理
+                             if (sliderValue > 50 && sliderValue < 70) {
+                               setSliderValue(50);
+                               setCodeIntensity(500);
+                             }
+                           }}
                            className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-amber-500"
+                           style={{
+                             background: `linear-gradient(to right, 
+                               #f59e0b 0%, 
+                               #f59e0b ${sliderValue <= 50 ? sliderValue : 50}%, 
+                               ${sliderValue > 50 && sliderValue < 70 ? '#fee2e2' : '#e5e7eb'} ${sliderValue <= 50 ? 50 : sliderValue < 70 ? sliderValue : 50}%, 
+                               ${sliderValue > 50 && sliderValue < 70 ? '#fee2e2' : '#e5e7eb'} ${sliderValue >= 70 ? sliderValue : 70}%, 
+                               ${sliderValue >= 70 ? '#f59e0b' : '#e5e7eb'} ${sliderValue >= 70 ? sliderValue : 70}%, 
+                               #e5e7eb 100%)`
+                           }}
                          />
-                         <div className="flex justify-between text-[10px] text-ink-400 mt-1">
+                         <div className="flex justify-between text-[10px] text-ink-400 mt-1 relative">
                             <span>10</span>
-                            <span className="ml-8">500</span>
-                            <span>Unlimited</span>
+                            <span className="absolute left-[50%] -translate-x-1/2">500</span>
+                            <span className="text-amber-600 font-medium">无限制</span>
+                         </div>
+                         <div className="mt-2 text-[10px] text-ink-400">
+                            {codeIntensity >= 1000 ? (
+                              <span className="text-amber-600">⚠️ 无限制模式可能消耗大量 Credits</span>
+                            ) : (
+                              <span>拖动到最右侧可启用无限制模式</span>
+                            )}
                          </div>
                       </div>
                     )}
@@ -432,8 +524,8 @@ const DemoChat = () => {
                   <div className="flex items-center gap-2">
                     <FileText size={16} className="text-sky-600" />
                     <div>
-                      <p className="text-sm font-medium text-ink-900">report.pdf</p>
-                      <p className="text-xs text-ink-400">2.4 MB • 2分钟前</p>
+                      <p className="text-sm font-medium text-ink-900">沪深300估值分析报告.pdf</p>
+                      <p className="text-xs text-ink-400">3.2 MB • 2分钟前</p>
                     </div>
                   </div>
                   <button className="text-ink-400 hover:text-sky-600">
@@ -446,8 +538,8 @@ const DemoChat = () => {
                   <div className="flex items-center gap-2">
                     <FileText size={16} className="text-emerald-600" />
                     <div>
-                      <p className="text-sm font-medium text-ink-900">data.csv</p>
-                      <p className="text-xs text-ink-400">12 KB • 2分钟前</p>
+                      <p className="text-sm font-medium text-ink-900">行业PE_PB数据.csv</p>
+                      <p className="text-xs text-ink-400">28 KB • 2分钟前</p>
                     </div>
                   </div>
                   <button className="text-ink-400 hover:text-sky-600">
