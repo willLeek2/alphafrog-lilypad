@@ -15,6 +15,16 @@ const DemoDashboard = lazy(() => import('../pages/demo/DemoDashboard'));
 const DemoChat = lazy(() => import('../pages/demo/DemoChat'));
 const DemoSettings = lazy(() => import('../pages/demo/DemoSettings'));
 
+// Auth Pages
+const LoginPage = lazy(() => import('../pages/auth/LoginPage'));
+const RegisterPage = lazy(() => import('../pages/auth/RegisterPage'));
+const ForgotPasswordPage = lazy(() => import('../pages/auth/ForgotPasswordPage'));
+const SettingsPage = lazy(() => import('../pages/SettingsPage'));
+const UserChatPage = lazy(() => import('../pages/agent/UserChatPage'));
+
+// Legacy redirect component
+const LegacyLandingRedirect = () => <Navigate to="/" replace />;
+
 // Loading component
 const PageLoader = () => (
   <div className="flex h-screen w-full items-center justify-center bg-sky-50">
@@ -41,8 +51,41 @@ export const createAppRouter = (
   onAdminNavigate: () => void,
   onAdminLogout: () => void
 ) => createBrowserRouter([
+  // Demo pages are now the default (breaking change: v0.4)
   {
     path: '/',
+    element: withSuspense(DemoLanding),
+  },
+  {
+    path: '/dashboard',
+    element: withSuspense(DemoDashboard),
+  },
+  {
+    path: '/chat',
+    element: withSuspense(DemoChat),
+  },
+  {
+    path: '/settings',
+    element: withSuspense(DemoSettings),
+  },
+  
+  // Auth Routes
+  {
+    path: '/login',
+    element: withSuspense(LoginPage),
+  },
+  {
+    path: '/register',
+    element: withSuspense(RegisterPage),
+  },
+  {
+    path: '/forgot-password',
+    element: withSuspense(ForgotPasswordPage),
+  },
+
+  // Legacy routes for authenticated users
+  {
+    path: '/app',
     element: (
       <AppLayout
         user={user}
@@ -57,11 +100,15 @@ export const createAppRouter = (
     children: [
       {
         index: true,
-        element: withSuspense(LandingPage),
+        element: <LegacyLandingRedirect />,
       },
       {
         path: 'profile',
-        element: user ? withSuspense(ProfilePage, { user }) : <Navigate to="/" replace />,
+        element: user ? withSuspense(ProfilePage, { user }) : <Navigate to="/login" replace />,
+      },
+      {
+        path: 'settings',
+        element: user ? withSuspense(SettingsPage, { user }) : <Navigate to="/login" replace />,
       },
       {
         path: 'admin',
@@ -72,40 +119,51 @@ export const createAppRouter = (
         }) : <Navigate to="/" replace />,
       },
       {
-        path: 'agent',
+        path: 'chat',
         children: [
           {
-            path: 'chat',
-            element: user ? withSuspense(AgentChatPage) : <Navigate to="/" replace />,
+            index: true,
+            element: user ? withSuspense(UserChatPage) : <Navigate to="/login" replace />,
           },
           {
-            path: 'runs/:runId',
-            element: user ? withSuspense(AgentRunDetailPage) : <Navigate to="/" replace />,
+            path: ':runId',
+            element: user ? withSuspense(UserChatPage) : <Navigate to="/login" replace />,
           },
         ],
       },
+      {
+        path: 'agent', // Keep legacy agent route for now or remove if safe. Let's redirect to new chat.
+        children: [
+            {
+              path: 'chat',
+              element: <Navigate to="/app/chat" replace />,
+            },
+            {
+              path: 'runs/:runId',
+              // Use a component to capture params if needed, or just redirect to root of chat if complex
+              // For simplicity, let's just redirect to /app/chat. Users can find their history there.
+              element: <Navigate to="/app/chat" replace />,
+            }
+        ]
+      },
     ],
   },
+  // Legacy demo routes (redirect to new routes)
   {
-    path: 'demo',
-    children: [
-      {
-        index: true,
-        element: withSuspense(DemoLanding),
-      },
-      {
-        path: 'dashboard',
-        element: withSuspense(DemoDashboard),
-      },
-      {
-        path: 'chat',
-        element: withSuspense(DemoChat),
-      },
-      {
-        path: 'settings',
-        element: withSuspense(DemoSettings),
-      },
-    ],
+    path: '/demo',
+    element: <Navigate to="/" replace />,
+  },
+  {
+    path: '/demo/dashboard',
+    element: <Navigate to="/dashboard" replace />,
+  },
+  {
+    path: '/demo/chat',
+    element: <Navigate to="/chat" replace />,
+  },
+  {
+    path: '/demo/settings',
+    element: <Navigate to="/settings" replace />,
   },
 ]);
 

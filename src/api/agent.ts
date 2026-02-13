@@ -66,12 +66,57 @@ async function apiCall<T>(
 }
 
 // Start a new agent run
-export async function startAgentRun(params: { message: string }): Promise<string> {
+export async function startAgentRun(params: { 
+  message: string;
+  config?: {
+    model?: string;
+    searchSources?: string[];
+    retrievalSources?: string[];
+    codeIntensity?: number;
+    useWebSearch?: boolean;
+  }
+}): Promise<string> {
   const response = await apiCall<{ runId: string }>('/api/agent/runs', {
     method: 'POST',
     body: JSON.stringify(params),
   });
   return response.runId;
+}
+
+export interface AgentRun {
+  runId: string;
+  userId: number;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  message?: string; // Initial message
+}
+
+export interface Artifact {
+  id: string;
+  runId: string;
+  name: string;
+  type: string;
+  path: string;
+  size?: number;
+  createdAt: string;
+}
+
+// List runs
+export async function listRuns(page: number = 0, size: number = 20): Promise<{ content: AgentRun[]; totalElements: number }> {
+  return apiCall<{ content: AgentRun[]; totalElements: number }>(
+    `/api/agent/runs?page=${page}&size=${size}`
+  );
+}
+
+// Get run artifacts
+export async function getRunArtifacts(runId: string): Promise<Artifact[]> {
+  return apiCall<Artifact[]>(`/api/agent/runs/${runId}/artifacts`);
+}
+
+// Get run details
+export async function getRun(runId: string): Promise<AgentRun> {
+  return apiCall<AgentRun>(`/api/agent/runs/${runId}`);
 }
 
 // Get run events

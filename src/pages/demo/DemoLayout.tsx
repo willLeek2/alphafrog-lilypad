@@ -11,13 +11,13 @@ const DemoLayout: React.FC<DemoLayoutProps> = ({ children }) => {
   const location = useLocation();
 
   const navItems = [
-    { icon: LayoutDashboard, label: '概览仪表盘', path: '/demo/dashboard', disabled: false },
-    { icon: MessageSquare, label: 'AI 分析助手', path: '/demo/chat', disabled: false },
+    { icon: LayoutDashboard, label: '概览仪表盘', path: '/dashboard', disabled: false },
+    { icon: MessageSquare, label: 'AI 分析助手', path: '/chat', disabled: false },
     { icon: Database, label: '数据查询', path: '#', disabled: true },
     { icon: Newspaper, label: '财经新闻', path: '#', disabled: true },
     { icon: FileText, label: '公司财报', path: '#', disabled: true },
     { icon: PieChart, label: '基金报告', path: '#', disabled: true },
-    { icon: Settings, label: '设置', path: '/demo/settings', disabled: false },
+    { icon: Settings, label: '设置', path: '/settings', disabled: false },
   ];
 
   return (
@@ -81,7 +81,7 @@ const DemoLayout: React.FC<DemoLayoutProps> = ({ children }) => {
             {navItems.find(i => i.path === location.pathname)?.label || 'AlphaFrog'}
           </h2>
           <div className="flex items-center gap-4">
-             <Link to="/demo/settings" className="flex items-center gap-3 rounded-full bg-sky-50 px-4 py-1.5 border border-sky-100 hover:bg-sky-100 transition-colors cursor-pointer">
+             <Link to="/settings" className="flex items-center gap-3 rounded-full bg-sky-50 px-4 py-1.5 border border-sky-100 hover:bg-sky-100 transition-colors cursor-pointer">
                 <div className="h-8 w-8 rounded-full bg-sky-200 flex items-center justify-center text-sky-700 font-bold text-sm">
                   <User size={16} />
                 </div>

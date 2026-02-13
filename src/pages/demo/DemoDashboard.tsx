@@ -70,7 +70,7 @@ const DemoDashboard = () => {
             <h1 className="text-2xl font-bold text-ink-900">概览仪表盘</h1>
             <p className="text-ink-500">近期市场分析任务全景视图</p>
           </div>
-          <Link to="/demo/chat">
+          <Link to="/chat">
             <ActionButton className="gap-2 shadow-sm">
               <Plus size={18} />
               新建分析任务

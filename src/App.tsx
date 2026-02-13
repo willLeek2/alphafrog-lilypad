@@ -10,12 +10,28 @@ import type { AdminUser } from "./types/admin";
 import { getTokenExpiryIso } from "./utils/jwt";
 import { clearAdminAuth, clearAuth, loadAdminAuth, loadAuth, saveAdminAuth, saveAuth } from "./utils/storage";
 
-type ViewKey = "landing" | "profile" | "admin";
+type ViewKey = "profile" | "admin";
 
 const App = () => {
-  const [user, setUser] = useState<AuthUser | null>(null);
-  const [admin, setAdmin] = useState<AdminUser | null>(null);
-  const [view, setView] = useState<ViewKey>("landing");
+  const [user, setUser] = useState<AuthUser | null>(() => {
+    const stored = loadAuth();
+    if (stored && stored.tokenExpiresAt && Date.parse(stored.tokenExpiresAt) <= Date.now()) {
+      clearAuth();
+      return null;
+    }
+    return stored;
+  });
+
+  const [admin, setAdmin] = useState<AdminUser | null>(() => {
+    const stored = loadAdminAuth();
+    if (stored && stored.tokenExpiresAt && Date.parse(stored.tokenExpiresAt) <= Date.now()) {
+      clearAdminAuth();
+      return null;
+    }
+    return stored;
+  });
+
+  const [view, setView] = useState<ViewKey | null>(null);
   const [authOpen, setAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
   const [authError, setAuthError] = useState<string | null>(null);
@@ -24,31 +40,6 @@ const App = () => {
   const [adminAuthMode, setAdminAuthMode] = useState<"login" | "create">("login");
   const [adminAuthError, setAdminAuthError] = useState<string | null>(null);
   const [adminAuthLoading, setAdminAuthLoading] = useState(false);
-
-  useEffect(() => {
-    const stored = loadAuth();
-    if (!stored) {
-      return;
-    }
-    if (stored.tokenExpiresAt && Date.parse(stored.tokenExpiresAt) <= Date.now()) {
-      clearAuth();
-      return;
-    }
-    setUser(stored);
-    setView("profile");
-  }, []);
-
-  useEffect(() => {
-    const stored = loadAdminAuth();
-    if (!stored) {
-      return;
-    }
-    if (stored.tokenExpiresAt && Date.parse(stored.tokenExpiresAt) <= Date.now()) {
-      clearAdminAuth();
-      return;
-    }
-    setAdmin(stored);
-  }, []);
 
   const openAuthPanel = (mode: "login" | "register") => {
     setAuthMode(mode);
@@ -110,8 +101,9 @@ const App = () => {
       };
       saveAuth(profile);
       setUser(profile);
-      setView("profile");
       setAuthOpen(false);
+      // Navigate to authenticated area
+      window.location.href = "/app/profile";
     } catch (error) {
       setAuthError(error instanceof Error ? error.message : "Login failed.");
     } finally {
@@ -148,8 +140,9 @@ const App = () => {
       };
       saveAuth(profile);
       setUser(profile);
-      setView("profile");
       setAuthOpen(false);
+      // Navigate to authenticated area
+      window.location.href = "/app/profile";
     } catch (error) {
       setAuthError(error instanceof Error ? error.message : "Registration failed.");
     } finally {
@@ -167,7 +160,8 @@ const App = () => {
     }
     clearAuth();
     setUser(null);
-    setView("landing");
+    // Redirect to home
+    window.location.href = "/";
   };
 
   const handleAdminLogin = async (payload: { username: string; password: string }) => {
@@ -186,8 +180,9 @@ const App = () => {
       };
       saveAdminAuth(adminUser);
       setAdmin(adminUser);
-      setView("admin");
       setAdminAuthOpen(false);
+      // Navigate to admin area
+      window.location.href = "/app/admin";
     } catch (error) {
       setAdminAuthError(error instanceof Error ? error.message : "Login failed.");
     } finally {
@@ -229,18 +224,18 @@ const App = () => {
   const handleAdminLogout = () => {
     clearAdminAuth();
     setAdmin(null);
-    if (view === "admin") {
-      setView("landing");
-    }
+    // Redirect to home
+    window.location.href = "/";
   };
 
   const handleNavigate = useCallback((nextView: ViewKey) => {
-    setView(nextView);
+    const path = nextView === "profile" ? "/app/profile" : "/app/admin";
+    window.location.href = path;
   }, []);
 
   const handleAdminNavigate = useCallback(() => {
     if (admin) {
-      setView("admin");
+      window.location.href = "/app/admin";
     } else {
       openAdminPanel("login");
     }
