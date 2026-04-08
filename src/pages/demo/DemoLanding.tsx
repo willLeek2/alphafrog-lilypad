@@ -1,34 +1,114 @@
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
 import ActionButton from "../../components/ActionButton";
 import { ArrowRight, Bot, Database } from 'lucide-react';
+import { loadAuth, clearAuth } from "../../utils/storage";
+import type { AuthUser } from "../../types/auth";
+import { logout } from "../../api/auth";
 
-const LandingHeader = () => (
-  <header className="fixed top-0 z-50 w-full border-b border-white/60 bg-white/70 backdrop-blur">
-    <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-4">
-      <Link to="/" className="flex items-center gap-3">
-        <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-sky-600 text-lg font-bold text-white">
-          AF
-        </span>
-        <div className="text-left">
-          <p className="text-base font-semibold text-ink-900">AlphaFrog</p>
-          <p className="text-xs text-ink-700">A股市场智能投研</p>
+const LandingHeader = () => {
+  const navigate = useNavigate();
+  const [user, setUser] = useState<AuthUser | null>(null);
+  
+  // 从 localStorage 读取用户状态
+  const checkAuth = () => {
+    const auth = loadAuth();
+    console.log('[LandingHeader] checkAuth:', auth);
+    // 检查是否有有效 token（兼容旧数据没有 tokenExpiresAt 的情况）
+    if (auth && auth.token) {
+      // 如果有过期时间，检查是否过期；如果没有过期时间，假设 token 有效
+      const isExpired = auth.tokenExpiresAt && Date.parse(auth.tokenExpiresAt) <= Date.now();
+      if (!isExpired) {
+        console.log('[LandingHeader] User logged in:', auth.username);
+        setUser(auth);
+      } else {
+        // Token 已过期，清除
+        console.log('[LandingHeader] Token expired');
+        clearAuth();
+        setUser(null);
+      }
+    } else {
+      console.log('[LandingHeader] No auth found');
+      setUser(null);
+    }
+  };
+
+  useEffect(() => {
+    checkAuth();
+    // 监听 storage 变化（其他标签页登录/登出）
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'alphafrog.auth') {
+        checkAuth();
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+    // 定时检查（应对 token 过期）
+    const interval = setInterval(checkAuth, 5000);
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      clearInterval(interval);
+    };
+  }, []);
+  
+  const handleLogout = async () => {
+    if (user) {
+      try {
+        await logout({ username: user.username });
+      } catch {
+        // 忽略登出错误
+      }
+    }
+    clearAuth();
+    setUser(null);
+    navigate("/");
+  };
+  
+  return (
+    <header className="fixed top-0 z-50 w-full border-b border-white/60 bg-white/70 backdrop-blur">
+      <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-4">
+        <Link to="/" className="flex items-center gap-3">
+          <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-sky-600 text-lg font-bold text-white">
+            AF
+          </span>
+          <div className="text-left">
+            <p className="text-base font-semibold text-ink-900">AlphaFrog</p>
+            <p className="text-xs text-ink-700">A股市场智能投研</p>
+          </div>
+        </Link>
+        <div className="flex items-center gap-3">
+          {user ? (
+            <>
+              <div className="hidden rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-ink-700 md:block">
+                {user.username}
+              </div>
+              <Link to="/app/chat">
+                <ActionButton variant="outline">
+                  工作台
+                </ActionButton>
+              </Link>
+              <ActionButton variant="ghost" onClick={handleLogout}>
+                登出
+              </ActionButton>
+            </>
+          ) : (
+            <>
+              <Link to="/login">
+                <ActionButton variant="ghost">
+                  登录
+                </ActionButton>
+              </Link>
+              <Link to="/register">
+                <ActionButton>
+                  注册
+                </ActionButton>
+              </Link>
+            </>
+          )}
         </div>
-      </Link>
-      <div className="flex items-center gap-3">
-        <Link to="/login">
-          <ActionButton variant="ghost">
-            登录
-          </ActionButton>
-        </Link>
-        <Link to="/register">
-          <ActionButton>
-            注册
-          </ActionButton>
-        </Link>
       </div>
-    </div>
-  </header>
-);
+    </header>
+  );
+};
 
 const DemoLanding = () => {
   return (

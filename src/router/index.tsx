@@ -8,7 +8,6 @@ import type { AdminUser } from '../types/admin';
 const LandingPage = lazy(() => import('../pages/LandingPage'));
 const ProfilePage = lazy(() => import('../pages/ProfilePage'));
 const AdminDashboard = lazy(() => import('../pages/AdminDashboard'));
-const AgentChatPage = lazy(() => import('../pages/agent/AgentChatPage'));
 const AgentRunDetailPage = lazy(() => import('../pages/agent/AgentRunDetailPage'));
 const DemoLanding = lazy(() => import('../pages/demo/DemoLanding'));
 const DemoDashboard = lazy(() => import('../pages/demo/DemoDashboard'));
@@ -20,7 +19,8 @@ const LoginPage = lazy(() => import('../pages/auth/LoginPage'));
 const RegisterPage = lazy(() => import('../pages/auth/RegisterPage'));
 const ForgotPasswordPage = lazy(() => import('../pages/auth/ForgotPasswordPage'));
 const SettingsPage = lazy(() => import('../pages/SettingsPage'));
-const UserChatPage = lazy(() => import('../pages/agent/UserChatPage'));
+const UserChat = lazy(() => import('../pages/agent/UserChat'));
+const UserDashboard = lazy(() => import('../pages/agent/UserDashboard'));
 
 // Legacy redirect component
 const LegacyLandingRedirect = () => <Navigate to="/" replace />;
@@ -49,20 +49,13 @@ export const createAppRouter = (
   onRegister: () => void,
   onLogout: () => void,
   onAdminNavigate: () => void,
-  onAdminLogout: () => void
+  onAdminLogout: () => void,
+  onAdminLogin: () => void
 ) => createBrowserRouter([
-  // Demo pages are now the default (breaking change: v0.4)
+  // Landing page
   {
     path: '/',
     element: withSuspense(DemoLanding),
-  },
-  {
-    path: '/dashboard',
-    element: withSuspense(DemoDashboard),
-  },
-  {
-    path: '/chat',
-    element: withSuspense(DemoChat),
   },
   {
     path: '/settings',
@@ -95,6 +88,7 @@ export const createAppRouter = (
         onRegister={onRegister}
         onLogout={onLogout}
         onAdminNavigate={onAdminNavigate}
+        onAdminLogin={onAdminLogin}
       />
     ),
     children: [
@@ -119,15 +113,19 @@ export const createAppRouter = (
         }) : <Navigate to="/" replace />,
       },
       {
+        path: 'dashboard',
+        element: user ? withSuspense(UserDashboard) : <Navigate to="/login" replace />,
+      },
+      {
         path: 'chat',
         children: [
           {
             index: true,
-            element: user ? withSuspense(UserChatPage) : <Navigate to="/login" replace />,
+            element: user ? withSuspense(UserChat) : <Navigate to="/login" replace />,
           },
           {
             path: ':runId',
-            element: user ? withSuspense(UserChatPage) : <Navigate to="/login" replace />,
+            element: user ? withSuspense(UserChat) : <Navigate to="/login" replace />,
           },
         ],
       },
@@ -148,22 +146,40 @@ export const createAppRouter = (
       },
     ],
   },
-  // Legacy demo routes (redirect to new routes)
+  // Legacy demo routes (for transition period)
+  {
+    path: '/legacy/demo',
+    element: <Navigate to="/legacy/demo/dashboard" replace />,
+  },
+  {
+    path: '/legacy/demo/dashboard',
+    element: withSuspense(DemoDashboard),
+  },
+  {
+    path: '/legacy/demo/chat',
+    element: withSuspense(DemoChat),
+  },
+  {
+    path: '/legacy/demo/settings',
+    element: withSuspense(DemoSettings),
+  },
+  // Old demo routes (redirect to legacy)
   {
     path: '/demo',
-    element: <Navigate to="/" replace />,
+    element: <Navigate to="/legacy/demo" replace />,
   },
   {
-    path: '/demo/dashboard',
-    element: <Navigate to="/dashboard" replace />,
+    path: '/demo/*',
+    element: <Navigate to="/legacy/demo" replace />,
+  },
+  // Removed public routes (now require login via /app/*)
+  {
+    path: '/dashboard',
+    element: <Navigate to="/app/dashboard" replace />,
   },
   {
-    path: '/demo/chat',
-    element: <Navigate to="/chat" replace />,
-  },
-  {
-    path: '/demo/settings',
-    element: <Navigate to="/settings" replace />,
+    path: '/chat',
+    element: <Navigate to="/app/chat" replace />,
   },
 ]);
 

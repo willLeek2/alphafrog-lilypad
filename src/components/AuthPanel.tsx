@@ -13,7 +13,7 @@ type AuthPanelProps = {
   onClose: () => void;
   onSwitch: (mode: AuthMode) => void;
   onLogin: (payload: { username: string; password: string }) => void;
-  onRegister: (payload: { username: string; password: string; email: string }) => void;
+  onRegister: (payload: { username: string; password: string; email: string; inviteCode: string }) => void;
 };
 
 const AuthPanel = ({
@@ -29,10 +29,12 @@ const AuthPanel = ({
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [email, setEmail] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
 
   useEffect(() => {
     if (isOpen) {
       setPassword("");
+      setInviteCode("");
     }
   }, [isOpen, mode]);
 
@@ -45,7 +47,7 @@ const AuthPanel = ({
     if (mode === "login") {
       onLogin({ username, password });
     } else {
-      onRegister({ username, password, email });
+      onRegister({ username, password, email, inviteCode });
     }
   };
 
@@ -100,17 +102,29 @@ const AuthPanel = ({
             />
           </label>
           {mode === "register" ? (
-            <label className="block text-sm font-semibold text-ink-700">
-              Email
-              <input
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                className="mt-2 w-full rounded-2xl border border-sky-100 bg-sky-50/70 px-4 py-3 text-sm text-ink-900 focus:border-sky-300 focus:outline-none"
-                placeholder="you@alphafrog.ai"
-                type="email"
-                required
-              />
-            </label>
+            <>
+              <label className="block text-sm font-semibold text-ink-700">
+                Email
+                <input
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  className="mt-2 w-full rounded-2xl border border-sky-100 bg-sky-50/70 px-4 py-3 text-sm text-ink-900 focus:border-sky-300 focus:outline-none"
+                  placeholder="you@alphafrog.ai"
+                  type="email"
+                  required
+                />
+              </label>
+              <label className="block text-sm font-semibold text-ink-700">
+                Invite Code
+                <input
+                  value={inviteCode}
+                  onChange={(event) => setInviteCode(event.target.value)}
+                  className="mt-2 w-full rounded-2xl border border-sky-100 bg-sky-50/70 px-4 py-3 text-sm text-ink-900 focus:border-sky-300 focus:outline-none"
+                  placeholder="Enter your invite code"
+                  required
+                />
+              </label>
+            </>
           ) : null}
           <label className="block text-sm font-semibold text-ink-700">
             Password

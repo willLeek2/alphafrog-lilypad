@@ -1,9 +1,9 @@
-import { useState, FormEvent } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useState, FormEvent, useEffect } from "react";
+import { Link, useNavigate, Navigate } from "react-router-dom";
 import AuthLayout from "./AuthLayout";
 import ActionButton from "../../components/ActionButton";
 import { login, getMe } from "../../api/auth";
-import { saveAuth } from "../../utils/storage";
+import { saveAuth, loadAuth } from "../../utils/storage";
 
 const LoginPage = () => {
   const navigate = useNavigate();
@@ -11,6 +11,30 @@ const LoginPage = () => {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+
+  // 检查是否已登录
+  useEffect(() => {
+    const auth = loadAuth();
+    console.log('[LoginPage] Checking auth:', auth);
+    // 只要有 token 且未过期（或没有过期时间字段，兼容旧数据）
+    if (auth && auth.token) {
+      const isExpired = auth.tokenExpiresAt && Date.parse(auth.tokenExpiresAt) <= Date.now();
+      if (!isExpired) {
+        console.log('[LoginPage] Already logged in, will redirect');
+        setIsLoggedIn(true);
+      } else {
+        console.log('[LoginPage] Token expired');
+      }
+    } else {
+      console.log('[LoginPage] Not logged in');
+    }
+  }, []);
+
+  // 已登录用户重定向到工作台
+  if (isLoggedIn) {
+    return <Navigate to="/app/profile" replace />;
+  }
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();

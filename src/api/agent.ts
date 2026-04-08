@@ -32,6 +32,13 @@ export interface EventsResponse {
   nextAfterSeq: number;
 }
 
+// Response wrapper from backend
+interface ApiResponse<T> {
+  code: number | string;
+  data: T;
+  message?: string;
+}
+
 // Helper function for API calls
 async function apiCall<T>(
   endpoint: string,
@@ -60,9 +67,26 @@ async function apiCall<T>(
   // Handle empty response
   const contentType = response.headers.get('content-type');
   if (contentType?.includes('application/json')) {
-    return response.json();
+    const result: ApiResponse<T> = await response.json();
+    // Backend wraps response in { code, data } format
+    if (result.code !== undefined && result.data !== undefined) {
+      // Backend returns code as string "200" or number 200
+    const codeStr = String(result.code);
+    if (codeStr !== '200' && codeStr !== '0') {
+        throw new Error(result.message || `API Error: ${result.code}`);
+      }
+      return result.data;
+    }
+    return result as T;
   }
   return response.text() as Promise<T>;
+}
+
+export interface AgentRunResponse {
+  id: string;
+  status: string;
+  currentStep: number;
+  maxSteps: number;
 }
 
 // Start a new agent run
@@ -70,42 +94,69 @@ export async function startAgentRun(params: {
   message: string;
   config?: {
     model?: string;
+    provider?: string;
     searchSources?: string[];
     retrievalSources?: string[];
     codeIntensity?: number;
     useWebSearch?: boolean;
   }
 }): Promise<string> {
-  const response = await apiCall<{ runId: string }>('/api/agent/runs', {
+  // Transform config to match backend API format
+  const requestBody: Record<string, unknown> = {
+    message: params.message,
+  };
+  
+  if (params.config) {
+    requestBody.config = params.config;
+    // If provider is specified, add it at top level for backend compatibility
+    if (params.config.provider) {
+      requestBody.provider = params.config.provider;
+    }
+  }
+  
+  const response = await apiCall<AgentRunResponse>('/api/agent/runs', {
     method: 'POST',
-    body: JSON.stringify(params),
+    body: JSON.stringify(requestBody),
   });
-  return response.runId;
+  return response.id;
 }
 
 export interface AgentRun {
-  runId: string;
-  userId: number;
+  id: string;
+  userId?: number;
   status: string;
   createdAt: string;
-  updatedAt: string;
+  updatedAt?: string;
   message?: string; // Initial message
+  completedAt?: string;
+  durationMs?: number;
+  totalTokens?: number;
+  hasArtifacts?: boolean;
+  toolCalls?: number;
 }
 
 export interface Artifact {
-  id: string;
-  runId: string;
-  name: string;
+  artifactId: string;
   type: string;
-  path: string;
-  size?: number;
+  name: string;
+  contentType: string;
+  url?: string;
+  metaJson?: string;
   createdAt: string;
+  expiresAtMillis?: number;
+}
+
+export interface AgentRunListResponse {
+  items: AgentRun[];
+  total: number;
+  hasMore: boolean;
 }
 
 // List runs
-export async function listRuns(page: number = 0, size: number = 20): Promise<{ content: AgentRun[]; totalElements: number }> {
-  return apiCall<{ content: AgentRun[]; totalElements: number }>(
-    `/api/agent/runs?page=${page}&size=${size}`
+// Using max parameter for limiting results (backend priority: limit > max > size)
+export async function listRuns(page: number = 0, max: number = 20): Promise<AgentRunListResponse> {
+  return apiCall<AgentRunListResponse>(
+    `/api/agent/runs?page=${page}&max=${max}`
   );
 }
 
@@ -155,5 +206,110 @@ export async function resumeRun(runId: string, planOverrideJson?: string): Promi
   await apiCall(`/api/agent/runs/${runId}:resume`, {
     method: 'POST',
     body: planOverrideJson ? JSON.stringify({ planOverrideJson }) : undefined,
+  });
+}
+
+// Delete run
+// 错误码：401（未登录）、404（不存在）、409（运行中）
+export async function deleteRun(runId: string): Promise<void> {
+  await apiCall(`/api/agent/runs/${runId}`, {
+    method: 'DELETE',
+  });
+}
+
+// ============ Model APIs ============
+
+export interface ModelInfo {
+  id: string;
+  displayName: string;
+  endpoint: string;
+  compositeId: string;
+  baseRate: number;
+  features?: string[];
+  validProviders?: string[];  // For OpenRouter provider routing
+}
+
+export interface ModelListResponse {
+  models: ModelInfo[];
+}
+
+// Get available models
+export async function getAvailableModels(): Promise<ModelListResponse> {
+  return apiCall<ModelListResponse>('/api/agent/models');
+}
+
+// ============ Credit APIs ============
+
+export interface CreditInfo {
+  totalCredits: number;
+  remainingCredits: number;
+  usedCredits: number;
+  resetCycle: string;
+  nextResetAt: string;
+}
+
+// Get user credit info
+export async function getCredits(): Promise<CreditInfo> {
+  return apiCall<CreditInfo>('/api/agent/credits');
+}
+
+// Apply for credits
+export async function applyForCredits(params: {
+  amount: number;
+  reason?: string;
+  contact?: string;
+}): Promise<void> {
+  await apiCall('/api/agent/credits/apply', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  });
+}
+
+// ============ Multi-turn Conversation APIs ============
+
+export interface AgentRunMessageItem {
+  id: number;
+  seq: number;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  msgType: 'initial' | 'follow_up' | 'summary';
+  metaJson?: string;
+  createdAt: string;
+}
+
+export interface AgentMessageListResponse {
+  items: AgentRunMessageItem[];
+  total: number;
+  hasMore: boolean;
+}
+
+export interface AgentMessageSendResponse {
+  messageId: number;
+  seq: number;
+  status: 'accepted' | 'rejected';
+  runStatus?: string;
+  rejectReason?: string;
+}
+
+// Get run message history
+export async function listMessages(
+  runId: string, 
+  limit: number = 50, 
+  offset: number = 0, 
+  includeInitial: boolean = true
+): Promise<AgentMessageListResponse> {
+  return apiCall<AgentMessageListResponse>(
+    `/api/agent/runs/${runId}/messages?limit=${limit}&offset=${offset}&include_initial=${includeInitial}`
+  );
+}
+
+// Send follow-up message
+export async function sendMessage(
+  runId: string, 
+  content: string
+): Promise<AgentMessageSendResponse> {
+  return apiCall<AgentMessageSendResponse>(`/api/agent/runs/${runId}/messages`, {
+    method: 'POST',
+    body: JSON.stringify({ content }),
   });
 }

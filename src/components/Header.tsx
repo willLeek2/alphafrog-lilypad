@@ -27,7 +27,7 @@ const Header = ({
   const isAgentPage = location.pathname.startsWith('/agent');
 
   return (
-    <header className="sticky top-0 z-50 border-b border-white/60 bg-white/70 backdrop-blur">
+    <header className="flex-shrink-0 border-b border-white/60 bg-white/70 backdrop-blur">
       <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-4">
         <Link to="/" className="flex items-center gap-3">
           <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-sky-600 text-lg font-bold text-white">
@@ -38,7 +38,7 @@ const Header = ({
             <p className="text-xs text-ink-700">Microservice intelligence for A-share markets</p>
           </div>
         </Link>
-        <div className="hidden items-center gap-4 text-sm font-medium text-ink-700 md:flex">
+        <div className="hidden items-center gap-8 text-sm font-medium text-ink-700 md:flex">
           <Link
             to="/"
             className={
@@ -63,11 +63,11 @@ const Header = ({
           )}
           {isAuthed && (
             <Link
-              to="/agent/chat"
+              to="/app/dashboard"
               className={
-                isAgentPage
-                  ? "text-violet-700 flex items-center gap-1"
-                  : "transition hover:text-violet-700 flex items-center gap-1"
+                location.pathname.startsWith('/app')
+                  ? "text-violet-700 flex items-center gap-1.5"
+                  : "transition hover:text-violet-700 flex items-center gap-1.5"
               }
             >
               <MessageSquare className="w-4 h-4" />

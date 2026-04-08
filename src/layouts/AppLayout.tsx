@@ -10,6 +10,7 @@ interface AppLayoutProps {
   onRegister: () => void;
   onLogout: () => void;
   onAdminNavigate: () => void;
+  onAdminLogin: () => void;
 }
 
 const AppLayout = ({
@@ -20,10 +21,11 @@ const AppLayout = ({
   onRegister,
   onLogout,
   onAdminNavigate,
+  onAdminLogin,
 }: AppLayoutProps) => {
   return (
-    <div className="min-h-screen bg-atmos bg-grid animate-shimmer">
-      <div className="min-h-screen bg-white/70">
+    <div className="h-screen bg-atmos bg-grid animate-shimmer">
+      <div className="h-screen bg-white/70 flex flex-col">
         <Header
           isAuthed={Boolean(user)}
           userName={user?.username}
@@ -34,11 +36,11 @@ const AppLayout = ({
           onRegister={onRegister}
           onLogout={onLogout}
         />
-        <main className="min-h-[calc(100vh-200px)]">
+        <main className="flex-1 flex flex-col overflow-hidden">
           <Outlet />
         </main>
         <Footer
-          onAdminEntry={() => (admin ? onNavigate('admin') : onLogin())}
+          onAdminEntry={() => (admin ? onNavigate('admin') : onAdminLogin())}
           adminActive={Boolean(admin)}
         />
       </div>

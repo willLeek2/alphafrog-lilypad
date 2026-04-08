@@ -24,3 +24,8 @@ pnpm-debug.log*
 
 # os
 .DS_Store
+
+# browser use
+.token.local
+
+AGENTS.md

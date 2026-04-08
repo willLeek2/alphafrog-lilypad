@@ -5,7 +5,9 @@ import ActionButton from "../components/ActionButton";
 import { DashboardOverview } from "../components/admin/DashboardOverview";
 import { UserManagement } from "../components/admin/UserManagement";
 import { CreditApproval } from "../components/admin/CreditApproval";
-import { LayoutDashboard, Users, CreditCard, Settings } from "lucide-react";
+import { AgentMonitor } from "../components/admin/AgentMonitor";
+import { SystemConfig } from "../components/admin/SystemConfig";
+import { LayoutDashboard, Users, CreditCard, Settings, Activity, Server } from "lucide-react";
 
 type AdminDashboardProps = {
   admin: AdminUser;
@@ -13,7 +15,7 @@ type AdminDashboardProps = {
   onAdminDeleted: () => void;
 };
 
-type Tab = "overview" | "users" | "credits" | "settings";
+type Tab = "overview" | "users" | "credits" | "monitor" | "config" | "settings";
 
 const AdminDashboard = ({ admin, onAdminLogout, onAdminDeleted }: AdminDashboardProps) => {
   const [activeTab, setActiveTab] = useState<Tab>("overview");
@@ -53,6 +55,8 @@ const AdminDashboard = ({ admin, onAdminLogout, onAdminDeleted }: AdminDashboard
     { id: "overview", label: "概览", icon: LayoutDashboard },
     { id: "users", label: "用户管理", icon: Users },
     { id: "credits", label: "额度审批", icon: CreditCard },
+    { id: "monitor", label: "Agent监控", icon: Activity },
+    { id: "config", label: "系统配置", icon: Server },
     { id: "settings", label: "设置", icon: Settings },
   ] as const;
 
@@ -110,6 +114,14 @@ const AdminDashboard = ({ admin, onAdminLogout, onAdminDeleted }: AdminDashboard
 
         {activeTab === "credits" && (
           <CreditApproval token={admin.token} />
+        )}
+
+        {activeTab === "monitor" && (
+          <AgentMonitor token={admin.token} />
+        )}
+
+        {activeTab === "config" && (
+          <SystemConfig token={admin.token} />
         )}
 
         {activeTab === "settings" && (

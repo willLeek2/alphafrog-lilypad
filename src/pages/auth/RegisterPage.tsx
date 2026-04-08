@@ -1,9 +1,9 @@
-import { useState, FormEvent } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useState, FormEvent, useEffect } from "react";
+import { Link, useNavigate, Navigate } from "react-router-dom";
 import AuthLayout from "./AuthLayout";
 import ActionButton from "../../components/ActionButton";
 import { register, login, getMe } from "../../api/auth";
-import { saveAuth } from "../../utils/storage";
+import { saveAuth, loadAuth } from "../../utils/storage";
 
 const RegisterPage = () => {
   const navigate = useNavigate();
@@ -15,6 +15,24 @@ const RegisterPage = () => {
   const [agreed, setAgreed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+
+  // 检查是否已登录
+  useEffect(() => {
+    const auth = loadAuth();
+    // 只要有 token 且未过期（或没有过期时间字段，兼容旧数据）
+    if (auth && auth.token) {
+      const isExpired = auth.tokenExpiresAt && Date.parse(auth.tokenExpiresAt) <= Date.now();
+      if (!isExpired) {
+        setIsLoggedIn(true);
+      }
+    }
+  }, []);
+
+  // 已登录用户重定向到工作台
+  if (isLoggedIn) {
+    return <Navigate to="/app/profile" replace />;
+  }
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();

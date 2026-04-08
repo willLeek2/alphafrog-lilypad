@@ -1,5 +1,15 @@
+import { clearAuth, clearAdminAuth } from "../utils/storage";
+
 type ApiOptions = RequestInit & {
   token?: string;
+};
+
+// 401 错误监听器（用于通知 React 组件）
+type UnauthorizedListener = () => void;
+let unauthorizedListener: UnauthorizedListener | null = null;
+
+export const setUnauthorizedListener = (listener: UnauthorizedListener | null) => {
+  unauthorizedListener = listener;
 };
 
 const apiBaseUrl = (() => {
@@ -18,6 +28,21 @@ const buildUrl = (path: string) => {
   return `${apiBaseUrl}${normalizedPath}`;
 };
 
+// 处理 401 未授权错误
+const handleUnauthorized = () => {
+  // 清除本地存储的认证信息
+  clearAuth();
+  clearAdminAuth();
+  
+  // 通知监听器（如果有的话）
+  if (unauthorizedListener) {
+    unauthorizedListener();
+  } else {
+    // 如果没有监听器，直接跳转到登录页
+    window.location.href = "/login";
+  }
+};
+
 export const apiFetch = async (path: string, options: ApiOptions = {}) => {
   const { token, headers, ...rest } = options;
   const response = await fetch(buildUrl(path), {
@@ -28,6 +53,12 @@ export const apiFetch = async (path: string, options: ApiOptions = {}) => {
       ...headers,
     },
   });
+
+  // 处理 401 未授权
+  if (response.status === 401) {
+    handleUnauthorized();
+    throw new Error("登录已过期，请重新登录");
+  }
 
   const contentType = response.headers.get("content-type") || "";
   const payload = contentType.includes("application/json")
