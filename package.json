@@ -5,7 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:local": "vite",
+    "dev:test": "vite --mode test",
+    "dev:production": "vite --mode production",
     "build": "vite build",
+    "build:local": "vite build",
+    "build:test": "vite build --mode test",
+    "build:production": "vite build --mode production",
     "preview": "vite preview --port 31127"
   },
   "dependencies": {

@@ -20,7 +20,12 @@ pnpm-debug.log*
 
 # env
 .env
-.env.*
+.env.local
+.env.*.local
+!.env.example
+!.env.test
+!.env.production
+!.env.local.example
 
 # os
 .DS_Store
