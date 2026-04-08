@@ -1,14 +1,12 @@
 import { useEffect, useState, useCallback } from "react";
 import { RouterProvider } from 'react-router-dom';
 import AuthPanel from "./components/AuthPanel";
-import AdminAuthPanel from "./components/AdminAuthPanel";
 import { createAppRouter } from "./router";
 import { getMe, login, logout, register } from "./api/auth";
-import { adminLogin } from "./api/admin";
 import type { AuthProfile, AuthUser } from "./types/auth";
 import type { AdminUser } from "./types/admin";
 import { getTokenExpiryIso } from "./utils/jwt";
-import { clearAdminAuth, clearAuth, loadAdminAuth, loadAuth, saveAdminAuth, saveAuth } from "./utils/storage";
+import { clearAdminAuth, clearAuth, loadAdminAuth, loadAuth, saveAuth } from "./utils/storage";
 import { setUnauthorizedListener } from "./api/client";
 
 type ViewKey = "profile" | "admin";
@@ -32,14 +30,10 @@ const App = () => {
     return stored;
   });
 
-  const [view, setView] = useState<ViewKey | null>(null);
   const [authOpen, setAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
   const [authError, setAuthError] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
-  const [adminAuthOpen, setAdminAuthOpen] = useState(false);
-  const [adminAuthError, setAdminAuthError] = useState<string | null>(null);
-  const [adminAuthLoading, setAdminAuthLoading] = useState(false);
 
   const openAuthPanel = (mode: "login" | "register") => {
     setAuthMode(mode);
@@ -56,18 +50,6 @@ const App = () => {
     setAuthOpen(false);
     setAuthError(null);
   };
-
-  const openAdminPanel = () => {
-    setAdminAuthError(null);
-    setAdminAuthOpen(true);
-  };
-
-  const closeAdminPanel = () => {
-    setAdminAuthOpen(false);
-    setAdminAuthError(null);
-  };
-
-
 
   const handleLogin = async (payload: { username: string; password: string }) => {
     setAuthLoading(true);
@@ -160,34 +142,6 @@ const App = () => {
     window.location.href = "/";
   };
 
-  const handleAdminLogin = async (payload: { username: string; password: string }) => {
-    setAdminAuthLoading(true);
-    setAdminAuthError(null);
-    try {
-      const token = await adminLogin(payload);
-      const tokenValue = typeof token === "string" ? token : token?.token;
-      if (!tokenValue) {
-        throw new Error("Login succeeded but token is missing.");
-      }
-      const adminUser: AdminUser = {
-        username: payload.username,
-        token: tokenValue,
-        tokenExpiresAt: getTokenExpiryIso(tokenValue),
-      };
-      saveAdminAuth(adminUser);
-      setAdmin(adminUser);
-      setAdminAuthOpen(false);
-      // Navigate to admin area
-      window.location.href = "/app/admin";
-    } catch (error) {
-      setAdminAuthError(error instanceof Error ? error.message : "Login failed.");
-    } finally {
-      setAdminAuthLoading(false);
-    }
-  };
-
-
-
   const handleAdminLogout = () => {
     clearAdminAuth();
     setAdmin(null);
@@ -204,8 +158,12 @@ const App = () => {
     if (admin) {
       window.location.href = "/app/admin";
     } else {
-      openAdminPanel();
+      window.location.href = "/admin/login";
     }
+  }, [admin]);
+
+  const handleAdminEntry = useCallback(() => {
+    window.location.href = admin ? "/app/admin" : "/admin/login";
   }, [admin]);
 
   // 设置全局 401 未授权监听器
@@ -215,7 +173,8 @@ const App = () => {
       setUser(null);
       setAdmin(null);
       // 跳转到登录页
-      window.location.href = "/login";
+      const isAdminPath = window.location.pathname.startsWith('/app/admin') || window.location.pathname.startsWith('/admin/');
+      window.location.href = isAdminPath ? "/admin/login" : "/login";
     });
     
     // 清理函数
@@ -234,7 +193,7 @@ const App = () => {
     handleLogout,
     handleAdminNavigate,
     handleAdminLogout,
-    openAdminPanel
+    handleAdminEntry
   );
 
   return (
@@ -249,13 +208,6 @@ const App = () => {
         onSwitch={handleAuthSwitch}
         onLogin={handleLogin}
         onRegister={handleRegister}
-      />
-      <AdminAuthPanel
-        isOpen={adminAuthOpen}
-        isLoading={adminAuthLoading}
-        error={adminAuthError}
-        onClose={closeAdminPanel}
-        onLogin={handleAdminLogin}
       />
     </>
   );

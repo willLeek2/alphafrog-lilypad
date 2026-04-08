@@ -39,7 +39,8 @@ const handleUnauthorized = () => {
     unauthorizedListener();
   } else {
     // 如果没有监听器，直接跳转到登录页
-    window.location.href = "/login";
+    const isAdminPath = window.location.pathname.startsWith('/app/admin') || window.location.pathname.startsWith('/admin/');
+    window.location.href = isAdminPath ? "/admin/login" : "/login";
   }
 };
 

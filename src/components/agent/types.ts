@@ -25,6 +25,7 @@ export type EventDisplayType =
 export const EVENT_TYPE_MAP: Record<string, { type: EventDisplayType; label: string }> = {
   // 用户消息
   RUN_RECEIVED: { type: 'user_message', label: '已接收请求' },
+  FOLLOW_UP_RECEIVED: { type: 'user_message', label: '已接收追问' },
   
   // AI 消息 - WORKFLOW_COMPLETED/FAILED 包含完整 answer
   WORKFLOW_COMPLETED: { type: 'ai_message', label: '分析完成' },
@@ -42,6 +43,7 @@ export const EVENT_TYPE_MAP: Record<string, { type: EventDisplayType; label: str
   PLANNING_STARTED: { type: 'status_indicator', label: '正在规划...' },
   PLANNING_COMPLETED: { type: 'status_indicator', label: '规划完成' },
   PAUSED: { type: 'status_indicator', label: '已暂停' },
+  WORKFLOW_RESUMED: { type: 'status_indicator', label: '已恢复执行' },
   
   // 隐藏的事件 - 中间过程不显示
   EXECUTION_STARTED: { type: 'hidden', label: '开始执行' },

@@ -16,13 +16,15 @@ export interface AgentRunEvent {
 export interface AgentRunStatus {
   id: string;
   status: string;
-  phase: 'PLANNING' | 'EXECUTING' | 'EXECUTING_TOOL' | 'SUMMARIZING' | 'PAUSED' | 'COMPLETED';
+  phase: string;
   currentTool?: string;
   lastEventType: string;
   lastEventAt: string;
-  lastEventPayloadJson: string;
-  planJson: string;
-  progressJson: string;
+  lastEventPayload?: unknown;
+  plan?: unknown;
+  progress?: unknown;
+  observability?: unknown;
+  totalCreditsConsumed?: number;
 }
 
 export interface EventsResponse {
@@ -170,6 +172,13 @@ export async function getRun(runId: string): Promise<AgentRun> {
   return apiCall<AgentRun>(`/api/agent/runs/${runId}`);
 }
 
+export async function updateRunTitle(runId: string, title: string): Promise<AgentRun> {
+  return apiCall<AgentRun>(`/api/agent/runs/${runId}`, {
+    method: 'PUT',
+    body: JSON.stringify({ title }),
+  });
+}
+
 // Get run events
 export async function getRunEvents(
   runId: string,
@@ -189,6 +198,76 @@ export async function getRunStatus(runId: string): Promise<AgentRunStatus> {
 // Get run result
 export async function getRunResult(runId: string): Promise<unknown> {
   return apiCall<unknown>(`/api/agent/runs/${runId}/result`);
+}
+
+export interface TraceSpanItem {
+  seq: number;
+  type: 'llm' | 'tool' | string;
+  traceId: string;
+  time?: string;
+  phase?: string;
+  todoId?: string | null;
+  durationMs?: number | null;
+  model?: string;
+  toolName?: string;
+  inputTokens?: number | null;
+  outputTokens?: number | null;
+  hasError?: boolean;
+  hasInputMessages?: boolean;
+  hasReasoning?: boolean;
+  success?: boolean;
+  cacheHit?: boolean;
+  decisionLlmTraceId?: string | null;
+  outputSummary?: string;
+}
+
+export interface TraceListSummary {
+  totalLlmCalls: number;
+  totalToolCalls: number;
+  totalDurationMs: number;
+  totalTokens: number;
+}
+
+export interface TraceListResponse {
+  spans: TraceSpanItem[];
+  summary: TraceListSummary;
+}
+
+export interface TraceDetail {
+  type: 'llm' | 'tool' | string;
+  traceId: string;
+  phase?: string;
+  todoId?: string | null;
+  todoSequence?: number | null;
+  time?: string;
+  durationMs?: number | null;
+  model?: string;
+  endpoint?: string;
+  inputTokens?: number | null;
+  outputTokens?: number | null;
+  cachedTokens?: number | null;
+  actualCost?: number | null;
+  inputMessages?: unknown;
+  outputText?: string;
+  reasoningText?: string;
+  hasError?: boolean;
+  error?: string | null;
+  toolName?: string;
+  params?: Record<string, unknown> | null;
+  output?: string;
+  success?: boolean;
+  cacheHit?: boolean;
+  cacheKey?: string | null;
+  decisionLlmTraceId?: string | null;
+  decisionExcerpt?: string | null;
+}
+
+export async function getRunTraces(runId: string): Promise<TraceListResponse> {
+  return apiCall<TraceListResponse>(`/api/agent/runs/${runId}/traces`);
+}
+
+export async function getTraceDetail(runId: string, traceId: string): Promise<TraceDetail> {
+  return apiCall<TraceDetail>(`/api/agent/runs/${runId}/traces/${traceId}`);
 }
 
 // Cancel run

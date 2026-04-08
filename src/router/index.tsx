@@ -18,6 +18,8 @@ const DemoSettings = lazy(() => import('../pages/demo/DemoSettings'));
 const LoginPage = lazy(() => import('../pages/auth/LoginPage'));
 const RegisterPage = lazy(() => import('../pages/auth/RegisterPage'));
 const ForgotPasswordPage = lazy(() => import('../pages/auth/ForgotPasswordPage'));
+const AdminLoginPage = lazy(() => import('../pages/auth/AdminLoginPage'));
+const AdminRegisterPage = lazy(() => import('../pages/auth/AdminRegisterPage'));
 const SettingsPage = lazy(() => import('../pages/SettingsPage'));
 const UserChat = lazy(() => import('../pages/agent/UserChat'));
 const UserDashboard = lazy(() => import('../pages/agent/UserDashboard'));
@@ -74,6 +76,14 @@ export const createAppRouter = (
   {
     path: '/forgot-password',
     element: withSuspense(ForgotPasswordPage),
+  },
+  {
+    path: '/admin/login',
+    element: withSuspense(AdminLoginPage),
+  },
+  {
+    path: '/admin/register',
+    element: withSuspense(AdminRegisterPage),
   },
 
   // Legacy routes for authenticated users
