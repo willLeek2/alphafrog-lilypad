@@ -2,7 +2,7 @@ import { useState, FormEvent, useEffect } from "react";
 import { Link, useNavigate, Navigate } from "react-router-dom";
 import AuthLayout from "./AuthLayout";
 import ActionButton from "../../components/ActionButton";
-import { login, getMe } from "../../api/auth";
+import { login, getMe, logout } from "../../api/auth";
 import { saveAuth, loadAuth } from "../../utils/storage";
 
 const LoginPage = () => {
@@ -44,7 +44,18 @@ const LoginPage = () => {
     try {
       // 1. Login to get token
       // Backend may return plain text token or JSON { token: "..." }
-      const loginResult = await login({ username, password });
+      let loginResult;
+      try {
+        loginResult = await login({ username, password });
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "";
+        if (message.includes("User already logged in")) {
+          await logout({ username });
+          loginResult = await login({ username, password });
+        } else {
+          throw err;
+        }
+      }
       const token = typeof loginResult === 'string' 
         ? loginResult.replace(/^"|"$/g, '') // Strip surrounding quotes if any
         : loginResult.token;

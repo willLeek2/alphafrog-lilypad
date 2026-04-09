@@ -1,15 +1,8 @@
-import { clearAuth, clearAdminAuth } from "../utils/storage";
+type AuthScope = "user" | "admin" | "auto";
 
 type ApiOptions = RequestInit & {
+  authScope?: AuthScope;
   token?: string;
-};
-
-// 401 错误监听器（用于通知 React 组件）
-type UnauthorizedListener = () => void;
-let unauthorizedListener: UnauthorizedListener | null = null;
-
-export const setUnauthorizedListener = (listener: UnauthorizedListener | null) => {
-  unauthorizedListener = listener;
 };
 
 const apiBaseUrl = (() => {
@@ -28,24 +21,16 @@ const buildUrl = (path: string) => {
   return `${apiBaseUrl}${normalizedPath}`;
 };
 
-// 处理 401 未授权错误
-const handleUnauthorized = () => {
-  // 清除本地存储的认证信息
-  clearAuth();
-  clearAdminAuth();
-  
-  // 通知监听器（如果有的话）
-  if (unauthorizedListener) {
-    unauthorizedListener();
-  } else {
-    // 如果没有监听器，直接跳转到登录页
-    const isAdminPath = window.location.pathname.startsWith('/app/admin') || window.location.pathname.startsWith('/admin/');
-    window.location.href = isAdminPath ? "/admin/login" : "/login";
+const resolveAuthScope = (path: string, scope: AuthScope): Exclude<AuthScope, "auto"> => {
+  if (scope !== "auto") {
+    return scope;
   }
+  return path.startsWith("/admin") ? "admin" : "user";
 };
 
 export const apiFetch = async (path: string, options: ApiOptions = {}) => {
-  const { token, headers, ...rest } = options;
+  const { token, headers, authScope = "auto", ...rest } = options;
+  const resolvedScope = resolveAuthScope(path, authScope);
   const response = await fetch(buildUrl(path), {
     ...rest,
     headers: {
@@ -55,12 +40,6 @@ export const apiFetch = async (path: string, options: ApiOptions = {}) => {
     },
   });
 
-  // 处理 401 未授权
-  if (response.status === 401) {
-    handleUnauthorized();
-    throw new Error("登录已过期，请重新登录");
-  }
-
   const contentType = response.headers.get("content-type") || "";
   const payload = contentType.includes("application/json")
     ? await response.json()
@@ -68,7 +47,11 @@ export const apiFetch = async (path: string, options: ApiOptions = {}) => {
 
   if (!response.ok) {
     const message = typeof payload === "string" ? payload : payload?.message;
-    throw new Error(message || response.statusText);
+    const fallbackMessage =
+      response.status === 401
+        ? `${resolvedScope === "admin" ? "管理员" : "用户"}请求未授权`
+        : response.statusText;
+    throw new Error(message || fallbackMessage);
   }
 
   return payload;

@@ -3,6 +3,7 @@ import { Link, Navigate } from 'react-router-dom';
 import AuthLayout from './AuthLayout';
 import ActionButton from '../../components/ActionButton';
 import { adminLogin } from '../../api/admin';
+import { logout } from '../../api/auth';
 import { getTokenExpiryIso } from '../../utils/jwt';
 import { loadAdminAuth, saveAdminAuth } from '../../utils/storage';
 
@@ -33,7 +34,19 @@ const AdminLoginPage = () => {
     setIsLoading(true);
 
     try {
-      const loginResult = await adminLogin({ username, password });
+      let loginResult;
+      try {
+        loginResult = await adminLogin({ username, password });
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "";
+        if (message.includes("User already logged in")) {
+          await logout({ username });
+          loginResult = await adminLogin({ username, password });
+        } else {
+          throw err;
+        }
+      }
+
       const token = typeof loginResult === 'string'
         ? loginResult.replace(/^"|"$/g, '')
         : loginResult?.token;

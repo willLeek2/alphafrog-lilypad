@@ -120,7 +120,7 @@ export const createAppRouter = (
           admin, 
           onAdminLogout, 
           onAdminDeleted: onAdminLogout 
-        }) : <Navigate to="/" replace />,
+        }) : <Navigate to="/admin/login" replace />,
       },
       {
         path: 'dashboard',

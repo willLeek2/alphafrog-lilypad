@@ -9,6 +9,11 @@ import type {
   AdminFetchTaskDetail,
   AdminFetchTaskSummary,
   FetchTaskTemplateKey,
+  AdminFetchCatalogResponse,
+  AdminFetchJob,
+  AdminFetchJobDetail,
+  AdminFetchJobSpec,
+  AdminFetchJobSummary,
 } from "../types/admin";
 
 export type AdminLoginPayload = {
@@ -261,6 +266,60 @@ export type RetryFetchTasksResult = {
   message: string;
 };
 
+export type ListFetchJobsFilters = {
+  status?: string;
+  mode?: string;
+  jobUuid?: string;
+  createdFrom?: string;
+  createdTo?: string;
+  page?: number;
+  pageSize?: number;
+};
+
+export type ListFetchTasksFiltersV2 = {
+  jobUuid?: string;
+  status?: string;
+  taskName?: string;
+  taskSubType?: number;
+  sourceKind?: string;
+  createdFrom?: string;
+  createdTo?: string;
+  page?: number;
+  pageSize?: number;
+};
+
+export const getFetchCatalog = async (token: string) =>
+  apiFetch<AdminFetchCatalogResponse>("/admin/fetch-catalog", { token });
+
+export const createFetchJob = async (token: string, payload: AdminFetchJobSpec) =>
+  apiFetch<{ job: AdminFetchJob; itemsPreview: AdminFetchTask[]; message: string }>("/admin/fetch-jobs", {
+    method: "POST",
+    token,
+    body: JSON.stringify(payload),
+  });
+
+export const listFetchJobs = async (token: string, filters: ListFetchJobsFilters = {}) => {
+  const params = new URLSearchParams();
+  params.append("page", String(filters.page ?? 1));
+  params.append("pageSize", String(filters.pageSize ?? 10));
+  if (filters.status) params.append("status", filters.status);
+  if (filters.mode) params.append("mode", filters.mode);
+  if (filters.jobUuid) params.append("jobUuid", filters.jobUuid);
+  if (filters.createdFrom) params.append("createdFrom", filters.createdFrom);
+  if (filters.createdTo) params.append("createdTo", filters.createdTo);
+
+  return apiFetch<{
+    items: AdminFetchJob[];
+    total: number;
+    page: number;
+    pageSize: number;
+    summary: AdminFetchJobSummary;
+  }>(`/admin/fetch-jobs?${params.toString()}`, { token });
+};
+
+export const getFetchJobDetail = async (token: string, jobUuid: string) =>
+  apiFetch<AdminFetchJobDetail>(`/admin/fetch-jobs/${jobUuid}`, { token });
+
 export const createFetchTask = async (token: string, payload: CreateFetchTaskPayload) =>
   apiFetch<{ task: AdminFetchTask; message: string }>("/admin/fetch-tasks", {
     method: "POST",
@@ -287,6 +346,26 @@ export const listFetchTasks = async (token: string, filters: ListFetchTasksFilte
   }>(`/admin/fetch-tasks?${params.toString()}`, { token });
 };
 
+export const listFetchTasksV2 = async (token: string, filters: ListFetchTasksFiltersV2 = {}) => {
+  const params = new URLSearchParams();
+  params.append("page", String(filters.page ?? 1));
+  params.append("pageSize", String(filters.pageSize ?? 20));
+  if (filters.jobUuid) params.append("jobUuid", filters.jobUuid);
+  if (filters.status) params.append("status", filters.status);
+  if (filters.taskName) params.append("taskName", filters.taskName);
+  if (typeof filters.taskSubType === "number") params.append("taskSubType", String(filters.taskSubType));
+  if (filters.sourceKind) params.append("sourceKind", filters.sourceKind);
+  if (filters.createdFrom) params.append("createdFrom", filters.createdFrom);
+  if (filters.createdTo) params.append("createdTo", filters.createdTo);
+
+  return apiFetch<{
+    items: AdminFetchTask[];
+    total: number;
+    page: number;
+    pageSize: number;
+  }>(`/admin/fetch-tasks?${params.toString()}`, { token });
+};
+
 export const getFetchTaskDetail = async (token: string, taskUuid: string) =>
   apiFetch<AdminFetchTaskDetail>(`/admin/fetch-tasks/${taskUuid}`, { token });
 
@@ -295,4 +374,11 @@ export const retryFetchTasks = async (token: string, taskUuids: string[]) =>
     method: "POST",
     token,
     body: JSON.stringify({ taskUuids }),
+  });
+
+export const retryFailedTasksInJob = async (token: string, jobUuid: string, filters?: Record<string, unknown>) =>
+  apiFetch<{ results: RetryFetchTasksResult[] }>(`/admin/fetch-jobs/${jobUuid}:retry-failures`, {
+    method: "POST",
+    token,
+    body: JSON.stringify(filters ?? {}),
   });

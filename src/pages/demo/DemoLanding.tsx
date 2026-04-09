@@ -127,12 +127,12 @@ const DemoLanding = () => {
           </div>
           
           <h1 className="mb-8 font-display text-4xl font-bold leading-tight tracking-tight text-ink-900 md:text-6xl lg:text-7xl">
-            AI 驱动的市场情报，<br />
-            <span className="text-sky-600">专为理性投资者打造。</span>
+            真实数据驱动的AI投研<br />
+            <span className="text-sky-600">与你同在时间一边。</span>
           </h1>
           
           <p className="mx-auto mb-10 max-w-2xl text-lg text-ink-700 md:text-xl">
-            基于真实的 A 股市场数据，让 AI 协助你进行调研与分析。
+            AlphaFrog基于真实的市场数据，协助你扛住波动，穿越周期，实现复利。
           </p>
 
           <div className="flex flex-col items-center justify-center gap-4 sm:flex-row">

@@ -6,28 +6,42 @@ import { getMe, login, logout, register } from "./api/auth";
 import type { AuthProfile, AuthUser } from "./types/auth";
 import type { AdminUser } from "./types/admin";
 import { getTokenExpiryIso } from "./utils/jwt";
-import { clearAdminAuth, clearAuth, loadAdminAuth, loadAuth, saveAuth } from "./utils/storage";
-import { setUnauthorizedListener } from "./api/client";
+import {
+  AUTH_STORAGE_EVENT,
+  clearAdminAuth,
+  clearAuth,
+  loadAdminAuth,
+  loadAuth,
+  saveAuth,
+} from "./utils/storage";
 
 type ViewKey = "profile" | "admin";
 
 const App = () => {
-  const [user, setUser] = useState<AuthUser | null>(() => {
+  const getValidUserFromStorage = useCallback(() => {
     const stored = loadAuth();
     if (stored && stored.tokenExpiresAt && Date.parse(stored.tokenExpiresAt) <= Date.now()) {
       clearAuth();
       return null;
     }
     return stored;
-  });
+  }, []);
 
-  const [admin, setAdmin] = useState<AdminUser | null>(() => {
+  const getValidAdminFromStorage = useCallback(() => {
     const stored = loadAdminAuth();
     if (stored && stored.tokenExpiresAt && Date.parse(stored.tokenExpiresAt) <= Date.now()) {
       clearAdminAuth();
       return null;
     }
     return stored;
+  }, []);
+
+  const [user, setUser] = useState<AuthUser | null>(() => {
+    return getValidUserFromStorage();
+  });
+
+  const [admin, setAdmin] = useState<AdminUser | null>(() => {
+    return getValidAdminFromStorage();
   });
 
   const [authOpen, setAuthOpen] = useState(false);
@@ -166,22 +180,30 @@ const App = () => {
     window.location.href = admin ? "/app/admin" : "/admin/login";
   }, [admin]);
 
-  // 设置全局 401 未授权监听器
   useEffect(() => {
-    setUnauthorizedListener(() => {
-      // 清除用户状态
-      setUser(null);
-      setAdmin(null);
-      // 跳转到登录页
-      const isAdminPath = window.location.pathname.startsWith('/app/admin') || window.location.pathname.startsWith('/admin/');
-      window.location.href = isAdminPath ? "/admin/login" : "/login";
-    });
-    
-    // 清理函数
-    return () => {
-      setUnauthorizedListener(null);
+    const syncAuthState = () => {
+      setUser(getValidUserFromStorage());
+      setAdmin(getValidAdminFromStorage());
     };
-  }, []);
+
+    syncAuthState();
+
+    const handleStorageChange = (event: StorageEvent) => {
+      if (event.key === null || event.key === "alphafrog.auth" || event.key === "alphafrog.admin.auth") {
+        syncAuthState();
+      }
+    };
+
+    window.addEventListener("storage", handleStorageChange);
+    window.addEventListener(AUTH_STORAGE_EVENT, syncAuthState);
+    window.addEventListener("focus", syncAuthState);
+
+    return () => {
+      window.removeEventListener("storage", handleStorageChange);
+      window.removeEventListener(AUTH_STORAGE_EVENT, syncAuthState);
+      window.removeEventListener("focus", syncAuthState);
+    };
+  }, [getValidAdminFromStorage, getValidUserFromStorage]);
 
   // Create router with current state
   const router = createAppRouter(

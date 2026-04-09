@@ -24,8 +24,8 @@ const AppLayout = ({
   onAdminLogin,
 }: AppLayoutProps) => {
   return (
-    <div className="h-screen bg-atmos bg-grid animate-shimmer">
-      <div className="h-screen bg-white/70 flex flex-col">
+    <div className="min-h-screen bg-atmos bg-grid animate-shimmer">
+      <div className="min-h-screen bg-white/70 flex flex-col">
         <Header
           isAuthed={Boolean(user)}
           userName={user?.username}
@@ -36,7 +36,7 @@ const AppLayout = ({
           onRegister={onRegister}
           onLogout={onLogout}
         />
-        <main className="flex-1 flex flex-col overflow-hidden">
+        <main className="flex-1 flex flex-col overflow-y-auto overflow-x-hidden">
           <Outlet />
         </main>
         <Footer
