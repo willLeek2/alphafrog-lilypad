@@ -1,5 +1,15 @@
 import { apiFetch } from "./client";
-import type { AdminAgentRun, AdminAgentRunDetail, SystemConfigItem, CreditLedgerEntry, AdminUserDetail } from "../types/admin";
+import type {
+  AdminAgentRun,
+  AdminAgentRunDetail,
+  SystemConfigItem,
+  CreditLedgerEntry,
+  AdminUserDetail,
+  AdminFetchTask,
+  AdminFetchTaskDetail,
+  AdminFetchTaskSummary,
+  FetchTaskTemplateKey,
+} from "../types/admin";
 
 export type AdminLoginPayload = {
   username: string;
@@ -222,4 +232,67 @@ export const updateSystemConfig = async (token: string, key: string, value: stri
     method: "PUT",
     token,
     body: JSON.stringify({ key, value, reason }),
+  });
+
+export type CreateFetchTaskPayload = {
+  templateKey: FetchTaskTemplateKey;
+  params: {
+    startDate?: string;
+    endDate?: string;
+    offset?: number;
+    limit?: number;
+  };
+};
+
+export type ListFetchTasksFilters = {
+  status?: string;
+  templateKey?: FetchTaskTemplateKey;
+  taskUuid?: string;
+  createdFrom?: string;
+  createdTo?: string;
+  page?: number;
+  pageSize?: number;
+};
+
+export type RetryFetchTasksResult = {
+  sourceTaskUuid: string;
+  newTaskUuid: string;
+  success: boolean;
+  message: string;
+};
+
+export const createFetchTask = async (token: string, payload: CreateFetchTaskPayload) =>
+  apiFetch<{ task: AdminFetchTask; message: string }>("/admin/fetch-tasks", {
+    method: "POST",
+    token,
+    body: JSON.stringify(payload),
+  });
+
+export const listFetchTasks = async (token: string, filters: ListFetchTasksFilters = {}) => {
+  const params = new URLSearchParams();
+  params.append("page", String(filters.page ?? 1));
+  params.append("pageSize", String(filters.pageSize ?? 20));
+  if (filters.status) params.append("status", filters.status);
+  if (filters.templateKey) params.append("templateKey", filters.templateKey);
+  if (filters.taskUuid) params.append("taskUuid", filters.taskUuid);
+  if (filters.createdFrom) params.append("createdFrom", filters.createdFrom);
+  if (filters.createdTo) params.append("createdTo", filters.createdTo);
+
+  return apiFetch<{
+    items: AdminFetchTask[];
+    total: number;
+    page: number;
+    pageSize: number;
+    summary: AdminFetchTaskSummary;
+  }>(`/admin/fetch-tasks?${params.toString()}`, { token });
+};
+
+export const getFetchTaskDetail = async (token: string, taskUuid: string) =>
+  apiFetch<AdminFetchTaskDetail>(`/admin/fetch-tasks/${taskUuid}`, { token });
+
+export const retryFetchTasks = async (token: string, taskUuids: string[]) =>
+  apiFetch<{ results: RetryFetchTasksResult[] }>("/admin/fetch-tasks:retry", {
+    method: "POST",
+    token,
+    body: JSON.stringify({ taskUuids }),
   });

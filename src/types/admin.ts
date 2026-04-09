@@ -4,6 +4,14 @@ export type AdminUser = {
   tokenExpiresAt?: string;
 };
 
+export type FetchTaskTemplateKey =
+  | "stock_quote_range"
+  | "index_quote_trade_date"
+  | "index_quote_range"
+  | "index_weight_range"
+  | "fund_portfolio_range"
+  | "trade_calendar_range";
+
 export type AdminOverall = {
   fundCount: number;
   indexCount: number;
@@ -73,4 +81,33 @@ export type AdminUserDetail = {
   status: string;
   disabledAt: string;
   disabledReason: string;
+};
+
+export type AdminFetchTask = {
+  taskUuid: string;
+  templateKey: FetchTaskTemplateKey;
+  taskName: string;
+  taskSubType: number;
+  status: "PENDING" | "RUNNING" | "SUCCESS" | "FAILURE" | string;
+  fetchedItemsCount: number;
+  message: string | null;
+  paramsSummary: string;
+  createdBy: string;
+  createdAt: string | null;
+  updatedAt: string | null;
+  finishedAt: string | null;
+  retryOfTaskUuid: string | null;
+};
+
+export type AdminFetchTaskDetail = AdminFetchTask & {
+  inputParams: unknown;
+  dispatchPayload: unknown;
+};
+
+export type AdminFetchTaskSummary = {
+  queuePending: number;
+  queueConsumers: number;
+  runningCount: number;
+  successToday: number;
+  failureToday: number;
 };
