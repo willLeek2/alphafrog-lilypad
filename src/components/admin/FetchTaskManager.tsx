@@ -101,6 +101,20 @@ import {
   toDateTimeFilter,
 } from "./FetchTaskManager/utils/dates";
 
+// 注意：以下工具函数已拆分到 utils/ 子目录，但为避免大规模重构风险，
+// 暂时保留主文件中的定义。后续可逐步删除重复定义。
+// 已拆分的文件包括：
+// - utils/formatters.ts: formatDateTime, formatJson, toInputValue, getStatusBadgeClass, getModeLabel, getTaskKindLabel, getTaskSetModeLabel
+// - utils/taskParams.ts: normalizeTaskParamFieldName, readTaskFieldValue, buildParamsRecord, normalizeTaskSubType
+// - utils/catalog.ts: getTaskCatalog, getTaskVariant, getTaskFieldSchema, getSupportedSubTypes, getAllowedTaskSetModes
+// - utils/taskBehavior.ts: summarizeTaskBehavior, describeLeafRequest
+// - utils/draft.ts: createTaskDraft, createTaskSetDraft, buildFetchInfoDraft
+// - utils/payload.ts: parseNumber, serializeFieldValue, buildTaskParams, buildTaskSpec, buildTaskSetSpec, buildPayloadFromDrafts
+// - utils/preview.ts: buildTaskPreviewBlock, buildTaskSetPreviewBlock, buildFetchInfoPreviewBlocks, applyPresetSpec, getScopeTitle, addIssueMessage, getIssueReason
+// - utils/offsets.ts: enumerateOffsets
+// - utils/helpTexts.ts: getFieldHelpText
+// - utils/draftId.ts: createDraftId
+
 const normalizeTaskParamFieldName = (fieldName: string) =>
   fieldName.startsWith("task_params.") ? fieldName.slice("task_params.".length) : fieldName;
 
