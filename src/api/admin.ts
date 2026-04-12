@@ -12,6 +12,7 @@ import type {
   AdminFetchCatalogResponse,
   AdminFetchJob,
   AdminFetchJobDetail,
+  AdminFetchJobPreviewResponse,
   AdminFetchJobSpec,
   AdminFetchJobSummary,
 } from "../types/admin";
@@ -291,6 +292,13 @@ export type ListFetchTasksFiltersV2 = {
 export const getFetchCatalog = async (token: string) =>
   apiFetch<AdminFetchCatalogResponse>("/admin/fetch-catalog", { token });
 
+export const previewFetchJob = async (token: string, payload: AdminFetchJobSpec) =>
+  apiFetch<AdminFetchJobPreviewResponse>("/admin/fetch-jobs:preview", {
+    method: "POST",
+    token,
+    body: JSON.stringify(payload),
+  });
+
 export const createFetchJob = async (token: string, payload: AdminFetchJobSpec) =>
   apiFetch<{ job: AdminFetchJob; itemsPreview: AdminFetchTask[]; message: string }>("/admin/fetch-jobs", {
     method: "POST",
@@ -319,6 +327,19 @@ export const listFetchJobs = async (token: string, filters: ListFetchJobsFilters
 
 export const getFetchJobDetail = async (token: string, jobUuid: string) =>
   apiFetch<AdminFetchJobDetail>(`/admin/fetch-jobs/${jobUuid}`, { token });
+
+export const cancelFetchJob = async (token: string, jobUuid: string) =>
+  apiFetch(`/admin/fetch-jobs/${jobUuid}:cancel`, {
+    method: "POST",
+    token,
+    body: JSON.stringify({}),
+  });
+
+export const deleteFetchJob = async (token: string, jobUuid: string) =>
+  apiFetch(`/admin/fetch-jobs/${jobUuid}`, {
+    method: "DELETE",
+    token,
+  });
 
 export const createFetchTask = async (token: string, payload: CreateFetchTaskPayload) =>
   apiFetch<{ task: AdminFetchTask; message: string }>("/admin/fetch-tasks", {

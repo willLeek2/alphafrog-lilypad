@@ -129,19 +129,40 @@ export type AdminFetchTaskSetMode =
 export type AdminFetchCatalogParamField = {
   name: string;
   label: string;
-  type: string;
+  type?: string;
+  inputType?: string;
   required?: boolean;
   placeholder?: string;
   defaultValue?: unknown;
+  description?: string;
+  effectiveWhen?: string[] | string;
+  requiredWhen?: string[] | string;
+  ignoredWhen?: string[] | string;
+  validation?: {
+    min?: number;
+    max?: number;
+    nonZero?: boolean;
+    pattern?: string;
+  };
   options?: Array<{
     label: string;
     value: string;
   }>;
 };
 
+export type AdminFetchCatalogTaskVariant = {
+  taskSubType: number;
+  label: string;
+  description?: string;
+  allowedTaskSetModes?: AdminFetchTaskSetMode[];
+  fields?: AdminFetchCatalogParamField[];
+  executionSummary?: string;
+};
+
 export type AdminFetchCatalogTask = {
   taskName: string;
   label: string;
+  variants?: AdminFetchCatalogTaskVariant[];
   supportedSubTypes: number[];
   taskSetModes?: AdminFetchTaskSetMode[];
   dateStyle?: "timestamp" | "yyyyMMdd" | string;
@@ -191,6 +212,10 @@ export type AdminFetchJobSpec = {
   tasks?: AdminFetchTaskSpec[];
   task_sets?: AdminFetchTaskSetSpec[];
   fetch_info?: AdminFetchInfoSpec;
+  execution_options?: {
+    worker_threads?: number;
+    task_interval_ms?: number;
+  };
 };
 
 export type AdminFetchQuickPreset = {
@@ -224,6 +249,11 @@ export type AdminFetchJob = {
   createdAt: string | null;
   updatedAt: string | null;
   finishedAt: string | null;
+  executionOptions?: {
+    workerThreads?: number;
+    taskIntervalMs?: number;
+  };
+  orchestrationMode?: string | null;
 };
 
 export type AdminFetchJobDetail = AdminFetchJob & {
@@ -231,6 +261,17 @@ export type AdminFetchJobDetail = AdminFetchJob & {
   normalizedSpec: unknown;
   expansionSummary?: unknown;
   itemsPreview?: AdminFetchTask[];
+  executionOptions?: {
+    workerThreads?: number;
+    taskIntervalMs?: number;
+  };
+  dispatchStats?: {
+    dispatchedCount?: number;
+    pendingDispatchCount?: number;
+    workerThreads?: number;
+    taskIntervalMs?: number;
+  };
+  orchestrationNote?: string;
 };
 
 export type AdminFetchJobSummary = {
@@ -240,4 +281,46 @@ export type AdminFetchJobSummary = {
   runningTasks: number;
   successToday: number;
   failureToday: number;
+};
+
+export type AdminFetchPreviewIssue = {
+  path: string;
+  code: string;
+  message: string;
+};
+
+export type AdminFetchParameterAnalysis = {
+  scope: string;
+  effective?: string[];
+  requiredMissing?: string[];
+  optionalEffectiveEmpty?: string[];
+  ignored?: string[];
+  invalid?: string[];
+};
+
+export type AdminFetchBehaviorSummary = {
+  scope: string;
+  title: string;
+  description: string;
+  expansionCount?: number;
+  sampleLeafRequests?: Array<{
+    title: string;
+    description: string;
+  }>;
+};
+
+export type AdminFetchExecutionPlan = {
+  orchestrationMode?: string;
+  workerThreads?: number;
+  taskIntervalMs?: number;
+  note?: string;
+};
+
+export type AdminFetchJobPreviewResponse = {
+  valid: boolean;
+  errors?: AdminFetchPreviewIssue[];
+  warnings?: AdminFetchPreviewIssue[];
+  parameterAnalysis?: AdminFetchParameterAnalysis[];
+  behaviorSummary?: AdminFetchBehaviorSummary[];
+  executionPlan?: AdminFetchExecutionPlan;
 };

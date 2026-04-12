@@ -1,25 +1,34 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  cancelFetchJob,
   createFetchJob,
+  deleteFetchJob,
   getFetchCatalog,
   getFetchJobDetail,
   getFetchTaskDetail,
   listFetchJobs,
   listFetchTasksV2,
+  previewFetchJob,
   retryFailedTasksInJob,
   retryFetchTasks,
 } from "../../api/admin";
 import type {
+  AdminFetchBehaviorSummary,
   AdminFetchCatalogParamField,
   AdminFetchCatalogResponse,
   AdminFetchCatalogTask,
+  AdminFetchCatalogTaskVariant,
+  AdminFetchExecutionPlan,
   AdminFetchInfoCatalogEntry,
   AdminFetchInfoSpec,
   AdminFetchJob,
   AdminFetchJobDetail,
+  AdminFetchJobPreviewResponse,
   AdminFetchJobSpec,
   AdminFetchJobSummary,
   AdminFetchMode,
+  AdminFetchParameterAnalysis,
+  AdminFetchPreviewIssue,
   AdminFetchQuickPreset,
   AdminFetchTask,
   AdminFetchTaskDetail,
@@ -49,151 +58,54 @@ import {
   X,
 } from "lucide-react";
 
-interface FetchTaskManagerProps {
-  token: string;
-}
+// 从拆分后的模块导入类型、常量和工具函数
+import {
+  // 类型
+  type FetchTaskManagerProps,
+  type EditorMode,
+  type TaskDraft,
+  type TaskSetDraft,
+  type FetchInfoDraftEntry,
+  type TextPreviewBlock,
+  type ExecutionOptionsDraft,
+  type ParameterStatusKind,
+  type ParameterStatusItem,
+  type ParameterScopeCard,
+  type FieldStatusInfo,
+  // 常量（EMPTY_JOB_SUMMARY 在 types.ts 中定义）
+  EMPTY_JOB_SUMMARY,
+} from "./FetchTaskManager/types";
 
-type EditorMode = AdminFetchMode | "json";
+import {
+  // 常量
+  JOB_STATUS_OPTIONS,
+  MODE_OPTIONS,
+  EDITOR_MODE_OPTIONS,
+  TASK_SOURCE_OPTIONS,
+  TASK_SET_MODE_OPTIONS,
+  PARAM_HELP_TEXT,
+  TASK_KIND_LABELS,
+  TASK_SET_STRUCTURAL_PARAM_KEYS,
+  PARAMETER_STATUS_META,
+} from "./FetchTaskManager/constants";
 
-type TaskDraft = {
-  id: string;
-  task_name: string;
-  task_sub_type: string;
-  task_params: Record<string, string>;
-};
+import {
+  // 日期工具函数
+  compactDate,
+  expandDate,
+  formatDisplayDate,
+  parseDateInput,
+  formatDateAsCompact,
+  formatDateAsDashed,
+  enumerateDates,
+  toDateTimeFilter,
+} from "./FetchTaskManager/utils/dates";
 
-type TaskSetDraft = TaskDraft & {
-  task_set_mode: AdminFetchTaskSetMode;
-  trade_dates: {
-    start_timestamp: string;
-    end_timestamp: string;
-  };
-  date_range: {
-    start_date: string;
-    end_date: string;
-  };
-  offset_range: {
-    start: string;
-    end: string;
-    step: string;
-  };
-};
+const normalizeTaskParamFieldName = (fieldName: string) =>
+  fieldName.startsWith("task_params.") ? fieldName.slice("task_params.".length) : fieldName;
 
-type FetchInfoDraftEntry = {
-  enabled: boolean;
-  params: Record<string, string>;
-};
-
-type TextPreviewBlock = {
-  key: string;
-  title: string;
-  summary: string;
-  requestCount: number;
-  requestLines: string[];
-  parameterLines: string[];
-};
-
-const EMPTY_JOB_SUMMARY: AdminFetchJobSummary = {
-  queuePending: 0,
-  queueConsumers: 0,
-  runningJobs: 0,
-  runningTasks: 0,
-  successToday: 0,
-  failureToday: 0,
-};
-
-const JOB_STATUS_OPTIONS = [
-  { value: "", label: "全部状态" },
-  { value: "PENDING", label: "PENDING" },
-  { value: "RUNNING", label: "RUNNING" },
-  { value: "SUCCESS", label: "SUCCESS" },
-  { value: "FAILURE", label: "FAILURE" },
-  { value: "PARTIAL_FAILURE", label: "PARTIAL_FAILURE" },
-];
-
-const MODE_OPTIONS: Array<{ value: AdminFetchMode; label: string }> = [
-  { value: "tasks", label: "普通任务" },
-  { value: "task_sets", label: "任务集合" },
-  { value: "fetch_info", label: "基础信息" },
-  { value: "all", label: "全部组合" },
-];
-
-const EDITOR_MODE_OPTIONS: Array<{ value: EditorMode; label: string; icon: typeof Workflow }> = [
-  { value: "tasks", label: "普通任务", icon: Workflow },
-  { value: "task_sets", label: "任务集合", icon: Layers3 },
-  { value: "fetch_info", label: "基础信息", icon: Database },
-  { value: "all", label: "全部组合", icon: Blocks },
-  { value: "json", label: "高级 JSON", icon: Braces },
-];
-
-const TASK_SOURCE_OPTIONS = [
-  { value: "", label: "全部来源" },
-  { value: "TASK", label: "TASK" },
-  { value: "TASK_SET", label: "TASK_SET" },
-  { value: "FETCH_INFO", label: "FETCH_INFO" },
-];
-
-const TASK_SET_MODE_OPTIONS: Array<{ value: AdminFetchTaskSetMode; label: string }> = [
-  { value: "trade_dates", label: "按日期展开" },
-  { value: "offsets", label: "按 offset 展开" },
-  { value: "trade_dates_with_offsets", label: "日期 + offset 组合" },
-  { value: "date_range_with_offsets", label: "固定日期范围 + offset" },
-];
-
-const PARAM_HELP_TEXT: Record<string, string> = {
-  task_name: "选择要抓取的数据类型。不同任务名对应完全不同的 TuShare 接口和参数约束。",
-  task_sub_type: "同一个 task_name 下的执行分支编号。它决定后端到底走“按交易日”、“按代码+区间”还是“全量历史初始化”等哪条逻辑。",
-  task_set_mode: "只在 task_sets 中生效。它不是后端 fetch service 的原生字段，而是先在 admin facade / ingestion_flow 里展开成多条叶子请求的规则。",
-  ts_code: "TuShare 的证券或指数代码。填写后通常表示只抓指定标的，不再抓全市场。",
-  trade_date: "交易日，格式通常为 YYYYMMDD。适合字符串日期类任务，例如指数估值、申万行业日线、基金份额等。",
-  trade_date_timestamp: "交易日时间戳类字段。脚本和 facade 会把日期转换后再派发给后端，常见于股票日线、基金净值等老接口。",
-  start_date: "开始日期，通常用于按日期范围抓取。格式一般为 YYYYMMDD。",
-  end_date: "结束日期，通常用于按日期范围抓取。格式一般为 YYYYMMDD。",
-  start_date_timestamp: "开始日期时间戳。主要用于旧的 timestamp 风格接口。",
-  end_date_timestamp: "结束日期时间戳。主要用于旧的 timestamp 风格接口。",
-  offset: "分页偏移量。值越大表示向后翻页，常与 limit 组合使用。",
-  limit: "每次请求的页大小。不同接口的默认值不同，但为了可控性通常建议显式填写。",
-  market: "市场过滤条件。基金相关任务中常用于区分交易市场。",
-  exchange: "交易所过滤条件。ETF 份额规模任务中可按交易所收窄范围。",
-  ann_date: "公告日期，常用于基金经理等按公告日过滤的接口。",
-  name: "名称过滤条件。填写后只抓特定名称匹配的数据。",
-  l1_code: "一级行业编码过滤条件。",
-  l2_code: "二级行业编码过滤条件。",
-  l3_code: "三级行业编码过滤条件。",
-  is_new: "是否只看最新成分，一般不填时后端会默认使用 Y。",
-  level: "行业分类层级，例如一级、二级、三级。",
-  src: "行业分类标准来源。申万分类不填时后端默认使用 SW2021。",
-  trade_dates_start_timestamp: "task_sets 的日期展开起点。会按自然日逐天展开。",
-  trade_dates_end_timestamp: "task_sets 的日期展开终点。会按自然日逐天展开。",
-  date_range_start_date: "固定日期范围的开始日期。常用于 task_sub_type=3 的历史初始化模式。",
-  date_range_end_date: "固定日期范围的结束日期。常用于 task_sub_type=3 的历史初始化模式。",
-  offset_range_start: "task_sets 中 offset 展开的起始值。",
-  offset_range_end: "task_sets 中 offset 展开的结束值。",
-  offset_range_step: "task_sets 中 offset 展开的步长。通常建议与单页 limit 保持一致。",
-};
-
-const TASK_KIND_LABELS: Record<string, string> = {
-  stock_daily: "股票日线",
-  index_daily_basic: "指数估值指标",
-  sw_industry_daily: "申万行业日线",
-  sw_industry_classify: "申万行业分类",
-  sw_industry_member: "申万行业成分",
-  ci_index_member: "中信行业成分",
-  fund_nav: "基金净值",
-  fund_manager: "基金经理",
-  fund_share: "基金份额",
-  etf_share_size: "ETF 份额规模",
-  stock_info: "股票基础信息",
-  fund_info: "基金基础信息",
-  index_info: "指数基础信息",
-};
-
-const createDraftId = () => {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-};
+const isOffsetExpandingTaskSetMode = (mode: AdminFetchTaskSetMode) =>
+  mode === "offsets" || mode === "trade_dates_with_offsets" || mode === "date_range_with_offsets";
 
 const formatDateTime = (value: string | null | undefined) => {
   if (!value) return "-";
@@ -214,23 +126,6 @@ const formatJson = (value: unknown) => {
   } catch {
     return String(value);
   }
-};
-
-const toDateTimeFilter = (date: string, endOfDay: boolean) => {
-  if (!date) return undefined;
-  const localTime = endOfDay ? `${date}T23:59:59.999` : `${date}T00:00:00.000`;
-  return new Date(localTime).toISOString();
-};
-
-const compactDate = (value: string) => value.replaceAll("-", "");
-
-const expandDate = (value: string | number | null | undefined) => {
-  if (value == null) return "";
-  const raw = String(value).trim();
-  if (/^\d{8}$/.test(raw)) {
-    return `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`;
-  }
-  return raw;
 };
 
 const toInputValue = (value: unknown, key?: string) => {
@@ -255,6 +150,8 @@ const getStatusBadgeClass = (status: string) => {
       return "border-amber-200 bg-amber-50 text-amber-700";
     case "RUNNING":
       return "border-sky-200 bg-sky-50 text-sky-700";
+    case "CANCELLED":
+      return "border-slate-200 bg-slate-100 text-slate-700";
     case "SUCCESS":
       return "border-green-200 bg-green-50 text-green-700";
     case "FAILURE":
@@ -277,48 +174,6 @@ const getTaskSetModeLabel = (mode: string) =>
 const readTaskFieldValue = (params: Record<string, unknown>, key: string) => {
   const value = params[key];
   return value == null || value === "" ? "未填写" : String(value);
-};
-
-const formatDisplayDate = (value: string) => {
-  if (!value) return "未填写";
-  return value;
-};
-
-const parseDateInput = (value: string) => {
-  const normalized = expandDate(value);
-  if (!normalized) return null;
-  const timestamp = Date.parse(normalized);
-  if (Number.isNaN(timestamp)) return null;
-  return new Date(timestamp);
-};
-
-const formatDateAsCompact = (date: Date) => {
-  const year = date.getFullYear();
-  const month = `${date.getMonth() + 1}`.padStart(2, "0");
-  const day = `${date.getDate()}`.padStart(2, "0");
-  return `${year}${month}${day}`;
-};
-
-const formatDateAsDashed = (date: Date) => {
-  const year = date.getFullYear();
-  const month = `${date.getMonth() + 1}`.padStart(2, "0");
-  const day = `${date.getDate()}`.padStart(2, "0");
-  return `${year}-${month}-${day}`;
-};
-
-const enumerateDates = (startValue: string, endValue: string) => {
-  const start = parseDateInput(startValue);
-  const end = parseDateInput(endValue);
-  if (!start || !end || start.getTime() > end.getTime()) {
-    return [];
-  }
-  const result: Date[] = [];
-  const cursor = new Date(start.getTime());
-  while (cursor.getTime() <= end.getTime()) {
-    result.push(new Date(cursor.getTime()));
-    cursor.setDate(cursor.getDate() + 1);
-  }
-  return result;
 };
 
 const enumerateOffsets = (startValue: string, endValue: string, stepValue: string) => {
@@ -490,6 +345,87 @@ const normalizeTaskSubType = (value: unknown, fallback = "1") => {
 const getTaskCatalog = (catalog: AdminFetchCatalogResponse | null, taskName: string) =>
   catalog?.taskCatalog.find((item) => item.taskName === taskName);
 
+const getTaskVariant = (
+  task: AdminFetchCatalogTask | undefined,
+  taskSubType: string | number | undefined
+): AdminFetchCatalogTaskVariant | undefined =>
+  task?.variants?.find((variant) => String(variant.taskSubType) === String(taskSubType));
+
+const getTaskFieldSchema = (
+  task: AdminFetchCatalogTask | undefined,
+  taskSubType: string | number | undefined
+) => {
+  const variant = getTaskVariant(task, taskSubType);
+  if (variant?.fields) return variant.fields;
+  // 如果指定的variant不存在，fallback到第一个variant的fields
+  if (task?.variants?.[0]?.fields) return task.variants[0].fields;
+  return task?.paramsSchema ?? [];
+};
+
+const getSupportedSubTypes = (task: AdminFetchCatalogTask | undefined) => {
+  const variantTypes = task?.variants?.map((variant) => variant.taskSubType) ?? [];
+  return variantTypes.length > 0 ? variantTypes : task?.supportedSubTypes ?? [1];
+};
+
+const getAllowedTaskSetModes = (
+  task: AdminFetchCatalogTask | undefined,
+  taskSubType: string | number | undefined
+) => {
+  const variantModes = getTaskVariant(task, taskSubType)?.allowedTaskSetModes;
+  if (variantModes?.length) return variantModes;
+  if (task?.taskSetModes?.length) return task.taskSetModes;
+  return TASK_SET_MODE_OPTIONS.map((item) => item.value);
+};
+
+const normalizePreviewPath = (
+  scope: string,
+  rawPath: string,
+  taskDrafts: TaskDraft[],
+  taskSetDrafts: TaskSetDraft[],
+  taskCatalogMap: Map<string, AdminFetchCatalogTask>
+) => {
+  if (rawPath.startsWith(scope)) {
+    return rawPath;
+  }
+
+  const normalizeTaskScope = (draft: TaskDraft | TaskSetDraft | undefined, fieldPath: string) => {
+    if (!draft) return `${scope}.${fieldPath}`;
+    const task = taskCatalogMap.get(draft.task_name);
+    const fieldNames = new Set(getTaskFieldSchema(task, draft.task_sub_type).map((item) => item.name));
+    if (
+      fieldPath === "task_name" ||
+      fieldPath === "task_sub_type" ||
+      fieldPath === "task_set_mode" ||
+      fieldPath.startsWith("task_params.") ||
+      fieldPath.startsWith("trade_dates.") ||
+      fieldPath.startsWith("date_range.") ||
+      fieldPath.startsWith("offset_range.")
+    ) {
+      return `${scope}.${fieldPath}`;
+    }
+    if (fieldNames.has(fieldPath)) {
+      return `${scope}.task_params.${fieldPath}`;
+    }
+    return `${scope}.${fieldPath}`;
+  };
+
+  if (scope.startsWith("tasks[")) {
+    const index = Number(scope.match(/^tasks\[(\d+)\]$/)?.[1] ?? -1);
+    return normalizeTaskScope(taskDrafts[index], rawPath);
+  }
+
+  if (scope.startsWith("task_sets[")) {
+    const index = Number(scope.match(/^task_sets\[(\d+)\]$/)?.[1] ?? -1);
+    return normalizeTaskScope(taskSetDrafts[index], rawPath);
+  }
+
+  if (scope.startsWith("fetch_info.") || scope === "execution_options") {
+    return `${scope}.${rawPath}`;
+  }
+
+  return `${scope}.${rawPath}`;
+};
+
 const createTaskDraft = (
   catalog: AdminFetchCatalogResponse | null,
   preferredTaskName?: string,
@@ -501,8 +437,12 @@ const createTaskDraft = (
   return {
     id: createDraftId(),
     task_name: catalogTask?.taskName ?? preferredTaskName ?? String(source?.task_name ?? ""),
-    task_sub_type: normalizeTaskSubType(source?.task_sub_type, String(catalogTask?.supportedSubTypes?.[0] ?? 1)),
-    task_params: buildParamsRecord(catalogTask?.paramsSchema, catalogTask?.defaultParams, source?.task_params),
+    task_sub_type: normalizeTaskSubType(source?.task_sub_type, String(getSupportedSubTypes(catalogTask)[0] ?? 1)),
+    task_params: buildParamsRecord(
+      getTaskFieldSchema(catalogTask, source?.task_sub_type),
+      catalogTask?.defaultParams,
+      source?.task_params
+    ),
   };
 };
 
@@ -527,10 +467,14 @@ const createTaskSetDraft = (
       String(
         defaultMode === "date_range_with_offsets"
           ? 3
-          : catalogTask?.supportedSubTypes?.[0] ?? 1
+          : getSupportedSubTypes(catalogTask)[0] ?? 1
       )
     ),
-    task_params: buildParamsRecord(catalogTask?.paramsSchema, catalogTask?.defaultParams, source?.task_params),
+    task_params: buildParamsRecord(
+      getTaskFieldSchema(catalogTask, source?.task_sub_type),
+      catalogTask?.defaultParams,
+      source?.task_params
+    ),
     task_set_mode: (defaultMode as AdminFetchTaskSetMode) ?? "trade_dates",
     trade_dates: {
       start_timestamp: expandDate(source?.trade_dates?.start_timestamp as string | number | undefined),
@@ -588,7 +532,7 @@ const serializeFieldValue = (
 ) => {
   const trimmed = rawValue.trim();
   if (!trimmed) return undefined;
-  const fieldType = field?.type?.toLowerCase();
+  const fieldType = (field?.inputType ?? field?.type ?? "").toLowerCase();
 
   if (fieldType === "number" || fieldType === "integer") {
     return parseNumber(trimmed);
@@ -619,11 +563,13 @@ const serializeFieldValue = (
 
 const buildTaskParams = (draft: TaskDraft | TaskSetDraft, task: AdminFetchCatalogTask | undefined) => {
   const params: Record<string, unknown> = {};
+  const fieldSchema = getTaskFieldSchema(task, draft.task_sub_type);
   Object.entries(draft.task_params).forEach(([key, value]) => {
-    const field = task?.paramsSchema?.find((item) => item.name === key);
-    const parsed = serializeFieldValue(field, value, key, task);
+    const field = fieldSchema.find((item) => item.name === key);
+    const normalizedKey = normalizeTaskParamFieldName(key);
+    const parsed = serializeFieldValue(field, value, normalizedKey, task);
     if (parsed !== undefined) {
-      params[key] = parsed;
+      params[normalizedKey] = parsed;
     }
   });
   return params;
@@ -641,11 +587,7 @@ const buildTaskSpec = (draft: TaskDraft, task: AdminFetchCatalogTask | undefined
 const buildTaskSetSpec = (draft: TaskSetDraft, task: AdminFetchCatalogTask | undefined): AdminFetchTaskSetSpec => {
   const spec: AdminFetchTaskSetSpec = {
     task_name: draft.task_name,
-    task_sub_type: Number(
-      draft.task_set_mode === "date_range_with_offsets"
-        ? draft.task_sub_type || 3
-        : draft.task_sub_type || task?.supportedSubTypes?.[0] || 1
-    ),
+    task_sub_type: Number(draft.task_sub_type || task?.supportedSubTypes?.[0] || 1),
     task_set_mode: draft.task_set_mode,
     task_params: buildTaskParams(draft, task),
   };
@@ -685,11 +627,17 @@ const buildPayloadFromDrafts = (
   tasks: TaskDraft[],
   taskSets: TaskSetDraft[],
   fetchInfo: Record<"fund" | "stock" | "index", FetchInfoDraftEntry>,
+  executionOptions: ExecutionOptionsDraft,
   catalog: AdminFetchCatalogResponse | null,
   jsonSpec: string
 ): AdminFetchJobSpec => {
   if (mode === "json") {
-    return JSON.parse(jsonSpec) as AdminFetchJobSpec;
+    const parsed = JSON.parse(jsonSpec) as AdminFetchJobSpec;
+    parsed.execution_options = {
+      worker_threads: parseNumber(executionOptions.worker_threads),
+      task_interval_ms: parseNumber(executionOptions.task_interval_ms),
+    };
+    return parsed;
   }
 
   const payload: AdminFetchJobSpec = {
@@ -699,6 +647,11 @@ const buildPayloadFromDrafts = (
   if (label.trim()) {
     payload.label = label.trim();
   }
+
+  payload.execution_options = {
+    worker_threads: parseNumber(executionOptions.worker_threads),
+    task_interval_ms: parseNumber(executionOptions.task_interval_ms),
+  };
 
   if (mode === "tasks" || mode === "all") {
     payload.tasks = tasks.map((draft) => buildTaskSpec(draft, getTaskCatalog(catalog, draft.task_name)));
@@ -918,6 +871,7 @@ const applyPresetSpec = (
   setTasks: (value: TaskDraft[]) => void,
   setTaskSets: (value: TaskSetDraft[]) => void,
   setFetchInfo: (value: Record<"fund" | "stock" | "index", FetchInfoDraftEntry>) => void,
+  setExecutionOptions: (value: ExecutionOptionsDraft) => void,
   setJsonSpec: (value: string) => void
 ) => {
   if (!preset.spec) {
@@ -931,7 +885,51 @@ const applyPresetSpec = (
   setTasks((spec.tasks ?? []).map((item) => createTaskDraft(catalog, item.task_name, item)));
   setTaskSets((spec.task_sets ?? []).map((item) => createTaskSetDraft(catalog, item.task_name, item)));
   setFetchInfo(buildFetchInfoDraft(catalog, spec.fetch_info));
+  setExecutionOptions({
+    worker_threads: toInputValue(spec.execution_options?.worker_threads, "worker_threads") || "4",
+    task_interval_ms: toInputValue(spec.execution_options?.task_interval_ms, "task_interval_ms") || "200",
+  });
   setJsonSpec(JSON.stringify(spec, null, 2));
+};
+
+const getScopeTitle = (scope: string) => {
+  if (scope.startsWith("tasks[")) {
+    const index = Number(scope.match(/^tasks\[(\d+)\]$/)?.[1] ?? 0);
+    return `普通任务 #${index + 1}`;
+  }
+  if (scope.startsWith("task_sets[")) {
+    const index = Number(scope.match(/^task_sets\[(\d+)\]$/)?.[1] ?? 0);
+    return `任务集合 #${index + 1}`;
+  }
+  if (scope.startsWith("fetch_info.")) {
+    const key = scope.split(".")[1];
+    return `基础信息 · ${key === "fund" ? "基金" : key === "stock" ? "股票" : "指数"}`;
+  }
+  if (scope === "execution_options") {
+    return "执行编排设置";
+  }
+  return scope;
+};
+
+const addIssueMessage = (
+  bucket: Map<string, { errors: string[]; warnings: string[] }>,
+  issue: AdminFetchPreviewIssue,
+  kind: "errors" | "warnings"
+) => {
+  const current = bucket.get(issue.path) ?? { errors: [], warnings: [] };
+  current[kind].push(issue.message);
+  bucket.set(issue.path, current);
+};
+
+const getIssueReason = (
+  path: string,
+  issueMap: Map<string, { errors: string[]; warnings: string[] }>,
+  fallback: string
+) => {
+  const issue = issueMap.get(path);
+  if (issue?.errors?.length) return issue.errors[0];
+  if (issue?.warnings?.length) return issue.warnings[0];
+  return fallback;
 };
 
 const DynamicField = ({
@@ -939,13 +937,21 @@ const DynamicField = ({
   value,
   onChange,
   helperText,
+  statusInfo,
 }: {
   field: AdminFetchCatalogParamField;
   value: string;
   onChange: (value: string) => void;
   helperText?: string;
+  statusInfo?: FieldStatusInfo;
 }) => {
-  const lowerType = field.type.toLowerCase();
+  const lowerType = (field.inputType ?? field.type ?? "text").toLowerCase();
+  const statusMeta = statusInfo ? PARAMETER_STATUS_META[statusInfo.kind] : null;
+  const baseInputClass = cn(
+    "w-full rounded-xl border bg-white px-3 py-2 text-sm text-ink-900 focus:outline-none",
+    statusMeta?.fieldClass ?? "border-gray-200 focus:border-sky-500"
+  );
+  const helper = statusInfo?.message ?? helperText;
 
   if (lowerType === "boolean") {
     return (
@@ -954,13 +960,18 @@ const DynamicField = ({
         <select
           value={value}
           onChange={(event) => onChange(event.target.value)}
-          className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-ink-900 focus:border-sky-500 focus:outline-none"
+          className={baseInputClass}
         >
           <option value="">未设置</option>
           <option value="true">true</option>
           <option value="false">false</option>
         </select>
-        {helperText ? <p className="mt-2 text-[11px] leading-5 text-ink-400">{helperText}</p> : null}
+        {statusInfo ? (
+          <span className={cn("mt-2 inline-flex rounded-full border px-2 py-0.5 text-[10px] font-medium", statusMeta?.badgeClass)}>
+            {statusInfo.label}
+          </span>
+        ) : null}
+        {helper ? <p className="mt-2 text-[11px] leading-5 text-ink-400">{helper}</p> : null}
       </label>
     );
   }
@@ -972,7 +983,7 @@ const DynamicField = ({
         <select
           value={value}
           onChange={(event) => onChange(event.target.value)}
-          className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-ink-900 focus:border-sky-500 focus:outline-none"
+          className={baseInputClass}
         >
           <option value="">请选择</option>
           {field.options.map((option) => (
@@ -981,7 +992,12 @@ const DynamicField = ({
             </option>
           ))}
         </select>
-        {helperText ? <p className="mt-2 text-[11px] leading-5 text-ink-400">{helperText}</p> : null}
+        {statusInfo ? (
+          <span className={cn("mt-2 inline-flex rounded-full border px-2 py-0.5 text-[10px] font-medium", statusMeta?.badgeClass)}>
+            {statusInfo.label}
+          </span>
+        ) : null}
+        {helper ? <p className="mt-2 text-[11px] leading-5 text-ink-400">{helper}</p> : null}
       </label>
     );
   }
@@ -995,9 +1011,17 @@ const DynamicField = ({
           onChange={(event) => onChange(event.target.value)}
           rows={4}
           placeholder={field.placeholder}
-          className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-ink-900 focus:border-sky-500 focus:outline-none"
+          className={cn(
+            "w-full rounded-xl border bg-white px-3 py-2 text-sm text-ink-900 focus:outline-none",
+            statusMeta?.fieldClass ?? "border-gray-200 focus:border-sky-500"
+          )}
         />
-        {helperText ? <p className="mt-2 text-[11px] leading-5 text-ink-400">{helperText}</p> : null}
+        {statusInfo ? (
+          <span className={cn("mt-2 inline-flex rounded-full border px-2 py-0.5 text-[10px] font-medium", statusMeta?.badgeClass)}>
+            {statusInfo.label}
+          </span>
+        ) : null}
+        {helper ? <p className="mt-2 text-[11px] leading-5 text-ink-400">{helper}</p> : null}
       </label>
     );
   }
@@ -1009,10 +1033,17 @@ const DynamicField = ({
         type={lowerType === "number" || lowerType === "integer" ? "number" : lowerType === "date" ? "date" : "text"}
         value={value}
         onChange={(event) => onChange(event.target.value)}
+        min={field.validation?.min}
+        max={field.validation?.max}
         placeholder={field.placeholder}
-        className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-ink-900 focus:border-sky-500 focus:outline-none"
+        className={baseInputClass}
       />
-      {helperText ? <p className="mt-2 text-[11px] leading-5 text-ink-400">{helperText}</p> : null}
+      {statusInfo ? (
+        <span className={cn("mt-2 inline-flex rounded-full border px-2 py-0.5 text-[10px] font-medium", statusMeta?.badgeClass)}>
+          {statusInfo.label}
+        </span>
+      ) : null}
+      {helper ? <p className="mt-2 text-[11px] leading-5 text-ink-400">{helper}</p> : null}
     </label>
   );
 };
@@ -1073,10 +1104,21 @@ export const FetchTaskManager = ({ token }: FetchTaskManagerProps) => {
     stock: { enabled: false, params: {} },
     index: { enabled: false, params: {} },
   });
+  const [executionOptions, setExecutionOptions] = useState<ExecutionOptionsDraft>({
+    worker_threads: "4",
+    task_interval_ms: "200",
+  });
   const [jsonSpec, setJsonSpec] = useState("{\n  \"mode\": \"tasks\"\n}");
   const [creating, setCreating] = useState(false);
   const [retryingTasks, setRetryingTasks] = useState(false);
   const [retryingJobFailures, setRetryingJobFailures] = useState(false);
+  const [jobActionState, setJobActionState] = useState<{
+    jobUuid: string;
+    action: "cancel" | "delete";
+  } | null>(null);
+  const [previewResult, setPreviewResult] = useState<AdminFetchJobPreviewResponse | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
 
   const taskCatalogMap = useMemo(
     () =>
@@ -1084,50 +1126,385 @@ export const FetchTaskManager = ({ token }: FetchTaskManagerProps) => {
     [catalog]
   );
 
-  const textPreviewBlocks = useMemo(() => {
-    if (editorMode === "json") {
-      try {
-        const parsed = JSON.parse(jsonSpec) as AdminFetchJobSpec;
-        return [
-          {
-            key: "json",
-            title: "高级 JSON 预览",
-            summary: "当前创建方式直接使用你填写的完整 job spec。下面展示的是原始 JSON，不再做进一步语义推断。",
-            requestCount: 0,
-            requestLines: [formatJson(parsed)],
-            parameterLines: ["高级 JSON：适合直接对齐 ingestion_flow.py 的配置语义。"],
-          } satisfies TextPreviewBlock,
-        ];
-      } catch (error) {
-        return [
-          {
-            key: "json-error",
-            title: "高级 JSON 预览",
-            summary: "当前 JSON 还不能被解析，因此无法推导实际抓取行为。",
-            requestCount: 0,
-            requestLines: [error instanceof Error ? error.message : "JSON 解析失败"],
-            parameterLines: ["请先修正 JSON 语法，再查看行为说明。"],
-          } satisfies TextPreviewBlock,
-        ];
-      }
+  const previewBuildResult = useMemo(() => {
+    try {
+      return {
+        payload: buildPayloadFromDrafts(
+          editorMode,
+          jobLabel,
+          taskDrafts,
+          taskSetDrafts,
+          fetchInfoDraft,
+          executionOptions,
+          catalog,
+          jsonSpec
+        ),
+        error: null as string | null,
+      };
+    } catch (error) {
+      return {
+        payload: null,
+        error: error instanceof Error ? error.message : "当前配置无法构建预览请求体",
+      };
+    }
+  }, [catalog, editorMode, executionOptions, fetchInfoDraft, jobLabel, jsonSpec, taskDrafts, taskSetDrafts]);
+
+  const localPreviewIssues = useMemo<AdminFetchPreviewIssue[]>(() => {
+    const issues: AdminFetchPreviewIssue[] = [];
+
+    const workerThreads = parseNumber(executionOptions.worker_threads);
+    const taskIntervalMs = parseNumber(executionOptions.task_interval_ms);
+
+    if (executionOptions.worker_threads.trim() && (!workerThreads || workerThreads <= 0)) {
+      issues.push({
+        path: "execution_options.worker_threads",
+        code: "INVALID_WORKER_THREADS",
+        message: "worker_threads 必须大于 0，表示服务端异步派发的并发度。",
+      });
     }
 
-    const blocks: TextPreviewBlock[] = [];
-    if (editorMode === "tasks" || editorMode === "all") {
-      taskDrafts.forEach((draft, index) => {
-        blocks.push(buildTaskPreviewBlock(draft, taskCatalogMap.get(draft.task_name), index));
+    if (executionOptions.task_interval_ms.trim() && (taskIntervalMs == null || taskIntervalMs < 0)) {
+      issues.push({
+        path: "execution_options.task_interval_ms",
+        code: "INVALID_TASK_INTERVAL",
+        message: "task_interval_ms 不能小于 0，表示服务端叶子请求的派发间隔。",
       });
     }
-    if (editorMode === "task_sets" || editorMode === "all") {
-      taskSetDrafts.forEach((draft, index) => {
-        blocks.push(buildTaskSetPreviewBlock(draft, taskCatalogMap.get(draft.task_name), index));
+
+    taskSetDrafts.forEach((draft, index) => {
+      if (
+        draft.task_set_mode === "offsets" ||
+        draft.task_set_mode === "trade_dates_with_offsets" ||
+        draft.task_set_mode === "date_range_with_offsets"
+      ) {
+        const rawStep = draft.offset_range.step.trim();
+        if (!rawStep) {
+          return;
+        }
+        const step = parseNumber(rawStep);
+        if (step == null || step <= 0) {
+          issues.push({
+            path: `task_sets[${index}].offset_range.step`,
+            code: "INVALID_RANGE_STEP",
+            message: "offset_range.step 必须大于 0，否则无法按 offset 正常展开叶子请求。",
+          });
+        }
+      }
+    });
+
+    return issues;
+  }, [executionOptions, taskSetDrafts]);
+
+  const previewPayloadJson = useMemo(
+    () => (previewBuildResult.payload ? JSON.stringify(previewBuildResult.payload) : ""),
+    [previewBuildResult.payload]
+  );
+
+  useEffect(() => {
+    if (!previewPayloadJson) {
+      setPreviewResult(null);
+      setPreviewLoading(false);
+      setPreviewError(previewBuildResult.error);
+      return;
+    }
+
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      setPreviewLoading(true);
+      setPreviewError(null);
+      try {
+        const response = await previewFetchJob(token, JSON.parse(previewPayloadJson) as AdminFetchJobSpec);
+        if (!cancelled) {
+          setPreviewResult(response);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setPreviewResult(null);
+          setPreviewError(error instanceof Error ? error.message : "抓取批次预览失败");
+        }
+      } finally {
+        if (!cancelled) {
+          setPreviewLoading(false);
+        }
+      }
+    }, 400);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [previewBuildResult.error, previewPayloadJson, token]);
+
+  const previewIssueMap = useMemo(() => {
+    const bucket = new Map<string, { errors: string[]; warnings: string[] }>();
+    localPreviewIssues.forEach((issue) => addIssueMessage(bucket, issue, "errors"));
+    (previewResult?.errors ?? []).forEach((issue) => addIssueMessage(bucket, issue, "errors"));
+    (previewResult?.warnings ?? []).forEach((issue) => addIssueMessage(bucket, issue, "warnings"));
+    return bucket;
+  }, [localPreviewIssues, previewResult?.errors, previewResult?.warnings]);
+
+  const getPathValue = useCallback(
+    (path: string) => {
+      if (path.startsWith("tasks[")) {
+        const match = path.match(/^tasks\[(\d+)\]\.(.+)$/);
+        if (!match) return "未填写";
+        const draft = taskDrafts[Number(match[1])];
+        const fieldPath = match[2];
+        if (!draft) return "未填写";
+        if (fieldPath === "task_name") return getTaskKindLabel(draft.task_name);
+        if (fieldPath === "task_sub_type") return draft.task_sub_type || "未填写";
+        if (fieldPath.startsWith("task_params.")) {
+          const key = fieldPath.slice("task_params.".length);
+          return draft.task_params[`task_params.${key}`]?.trim() || draft.task_params[key]?.trim() || "未填写";
+        }
+      }
+
+      if (path.startsWith("task_sets[")) {
+        const match = path.match(/^task_sets\[(\d+)\]\.(.+)$/);
+        if (!match) return "未填写";
+        const draft = taskSetDrafts[Number(match[1])];
+        const fieldPath = match[2];
+        if (!draft) return "未填写";
+        if (fieldPath === "task_name") return getTaskKindLabel(draft.task_name);
+        if (fieldPath === "task_sub_type") return draft.task_sub_type || "未填写";
+        if (fieldPath === "task_set_mode") return getTaskSetModeLabel(draft.task_set_mode);
+        if (fieldPath.startsWith("task_params.")) {
+          const key = fieldPath.slice("task_params.".length);
+          return draft.task_params[`task_params.${key}`]?.trim() || draft.task_params[key]?.trim() || "未填写";
+        }
+        if (fieldPath === "trade_dates.start_timestamp") return draft.trade_dates.start_timestamp || "未填写";
+        if (fieldPath === "trade_dates.end_timestamp") return draft.trade_dates.end_timestamp || "未填写";
+        if (fieldPath === "date_range.start_date") return draft.date_range.start_date || "未填写";
+        if (fieldPath === "date_range.end_date") return draft.date_range.end_date || "未填写";
+        if (fieldPath === "offset_range.start") return draft.offset_range.start || "未填写";
+        if (fieldPath === "offset_range.end") return draft.offset_range.end || "未填写";
+        if (fieldPath === "offset_range.step") return draft.offset_range.step || "未填写";
+      }
+
+      if (path.startsWith("fetch_info.")) {
+        const match = path.match(/^fetch_info\.(fund|stock|index)\.(.+)$/);
+        if (!match) return "未填写";
+        const entry = fetchInfoDraft[match[1] as "fund" | "stock" | "index"];
+        if (!entry) return "未填写";
+        if (match[2] === "enabled") return entry.enabled ? "已启用" : "未启用";
+        return entry.params[match[2]]?.trim() || "未填写";
+      }
+
+      if (path === "execution_options.worker_threads") return executionOptions.worker_threads || "未填写";
+      if (path === "execution_options.task_interval_ms") return executionOptions.task_interval_ms || "未填写";
+
+      return "未填写";
+    },
+    [executionOptions, fetchInfoDraft, taskDrafts, taskSetDrafts]
+  );
+
+  const getPathLabel = useCallback(
+    (path: string) => {
+      if (path.startsWith("tasks[")) {
+        const match = path.match(/^tasks\[(\d+)\]\.(.+)$/);
+        if (!match) return path;
+        const draft = taskDrafts[Number(match[1])];
+        const task = draft ? taskCatalogMap.get(draft.task_name) : undefined;
+        const fieldPath = match[2];
+        if (fieldPath === "task_name") return "任务类型";
+        if (fieldPath === "task_sub_type") return "执行分支";
+        if (fieldPath.startsWith("task_params.")) {
+          const fieldName = fieldPath.slice("task_params.".length);
+          return (
+            getTaskFieldSchema(task, draft?.task_sub_type).find(
+              (item) => item.name === fieldName || item.name === `task_params.${fieldName}`
+            )?.label ?? fieldName
+          );
+        }
+      }
+
+      if (path.startsWith("task_sets[")) {
+        const match = path.match(/^task_sets\[(\d+)\]\.(.+)$/);
+        if (!match) return path;
+        const draft = taskSetDrafts[Number(match[1])];
+        const task = draft ? taskCatalogMap.get(draft.task_name) : undefined;
+        const fieldPath = match[2];
+        if (fieldPath === "task_name") return "任务类型";
+        if (fieldPath === "task_sub_type") return "执行分支";
+        if (fieldPath === "task_set_mode") return "展开方式";
+        if (fieldPath === "trade_dates.start_timestamp") return "展开开始日期";
+        if (fieldPath === "trade_dates.end_timestamp") return "展开结束日期";
+        if (fieldPath === "date_range.start_date") return "固定范围开始日期";
+        if (fieldPath === "date_range.end_date") return "固定范围结束日期";
+        if (fieldPath === "offset_range.start") return "offset 起点";
+        if (fieldPath === "offset_range.end") return "offset 终点";
+        if (fieldPath === "offset_range.step") return "offset 步长";
+        if (fieldPath.startsWith("task_params.")) {
+          const fieldName = fieldPath.slice("task_params.".length);
+          return (
+            getTaskFieldSchema(task, draft?.task_sub_type).find(
+              (item) => item.name === fieldName || item.name === `task_params.${fieldName}`
+            )?.label ?? fieldName
+          );
+        }
+      }
+
+      if (path.startsWith("fetch_info.")) {
+        const match = path.match(/^fetch_info\.(fund|stock|index)\.(.+)$/);
+        if (!match) return path;
+        if (match[2] === "enabled") return `${match[1]} 基础信息开关`;
+        return catalog?.fetchInfoCatalog[match[1]]?.paramsSchema?.find((item) => item.name === match[2])?.label ?? match[2];
+      }
+
+      if (path === "execution_options.worker_threads") return "服务端并发度";
+      if (path === "execution_options.task_interval_ms") return "派发间隔";
+
+      return path;
+    },
+    [catalog?.fetchInfoCatalog, taskCatalogMap, taskDrafts, taskSetDrafts]
+  );
+
+  const parameterScopeCards = useMemo<ParameterScopeCard[]>(() => {
+    const analyses = previewResult?.parameterAnalysis ?? [];
+    const scopes = new Map<string, ParameterScopeCard>();
+    const priority: Record<ParameterStatusKind, number> = {
+      invalid: 5,
+      requiredMissing: 4,
+      ignored: 3,
+      optionalEffectiveEmpty: 2,
+      effective: 1,
+    };
+
+    const ensureScope = (scope: string) => {
+      const existing = scopes.get(scope);
+      if (existing) return existing;
+      const card: ParameterScopeCard = {
+        scope,
+        title: getScopeTitle(scope),
+        groups: {
+          requiredMissing: [],
+          effective: [],
+          optionalEffectiveEmpty: [],
+          ignored: [],
+          invalid: [],
+        },
+      };
+      scopes.set(scope, card);
+      return card;
+    };
+
+    const upsertItem = (card: ParameterScopeCard, item: ParameterStatusItem) => {
+      const existingKind = (Object.keys(card.groups) as ParameterStatusKind[]).find((kind) =>
+        card.groups[kind].some((current) => current.path === item.path)
+      );
+
+      if (!existingKind) {
+        card.groups[item.kind].push(item);
+        return;
+      }
+
+      if (priority[item.kind] > priority[existingKind]) {
+        card.groups[existingKind] = card.groups[existingKind].filter((current) => current.path !== item.path);
+        card.groups[item.kind].push(item);
+      }
+    };
+
+    analyses.forEach((analysis) => {
+      const card = ensureScope(analysis.scope);
+      ([
+        ["requiredMissing", analysis.requiredMissing, "当前必须填写后才能生成有效请求。"],
+        ["effective", analysis.effective, "当前会参与实际叶子请求构造。"],
+        ["optionalEffectiveEmpty", analysis.optionalEffectiveEmpty, "当前可生效，但保持为空时将走后端默认规则。"],
+        ["ignored", analysis.ignored, "当前 setting 下该字段不会传给实际叶子请求。"],
+        ["invalid", analysis.invalid, "当前字段取值非法，必须先修正。"],
+      ] as Array<[ParameterStatusKind, string[] | undefined, string]>).forEach(([kind, paths, fallbackReason]) => {
+        (paths ?? []).forEach((path) => {
+          const normalizedPath = normalizePreviewPath(
+            analysis.scope,
+            path,
+            taskDrafts,
+            taskSetDrafts,
+            taskCatalogMap
+          );
+          upsertItem(card, {
+            path: normalizedPath,
+            label: getPathLabel(normalizedPath),
+            value: getPathValue(normalizedPath),
+            reason: getIssueReason(normalizedPath, previewIssueMap, fallbackReason),
+            kind,
+          });
+        });
       });
-    }
-    if (editorMode === "fetch_info" || editorMode === "all") {
-      blocks.push(...buildFetchInfoPreviewBlocks(fetchInfoDraft));
-    }
-    return blocks;
-  }, [editorMode, jsonSpec, taskDrafts, taskSetDrafts, fetchInfoDraft, taskCatalogMap]);
+    });
+
+    localPreviewIssues.forEach((issue) => {
+      const scope = issue.path.startsWith("task_sets[")
+        ? issue.path.replace(/\..+$/, "")
+        : issue.path.startsWith("tasks[")
+          ? issue.path.replace(/\..+$/, "")
+          : issue.path.startsWith("fetch_info.")
+            ? issue.path.split(".").slice(0, 2).join(".")
+            : "execution_options";
+      const card = ensureScope(scope);
+      if (!card.groups.invalid.some((item) => item.path === issue.path)) {
+        upsertItem(card, {
+          path: issue.path,
+          label: getPathLabel(issue.path),
+          value: getPathValue(issue.path),
+          reason: issue.message,
+          kind: "invalid",
+        });
+      }
+    });
+
+    taskSetDrafts.forEach((draft, index) => {
+      const scope = `task_sets[${index}]`;
+      const card = ensureScope(scope);
+      const hiddenTaskParamKeys = new Set<string>(
+        [...TASK_SET_STRUCTURAL_PARAM_KEYS].map((key) => `${scope}.task_params.${key}`)
+      );
+
+      hiddenTaskParamKeys.forEach((path) => {
+        const existingKind = (Object.keys(card.groups) as ParameterStatusKind[]).find((kind) =>
+          card.groups[kind].some((current) => current.path === path)
+        );
+        if (!existingKind) {
+          return;
+        }
+        upsertItem(card, {
+          path,
+          label: getPathLabel(path),
+          value: getPathValue(path),
+          reason: "当前字段由 task_set 的结构化控件或展开规则生成，不建议再通过 task_params 重复填写。",
+          kind: "ignored",
+        });
+      });
+    });
+
+    return [...scopes.values()];
+  }, [
+    getPathLabel,
+    getPathValue,
+    localPreviewIssues,
+    previewIssueMap,
+    previewResult?.parameterAnalysis,
+    taskCatalogMap,
+    taskDrafts,
+    taskSetDrafts,
+  ]);
+
+  const fieldStatusMap = useMemo(() => {
+    const map = new Map<string, FieldStatusInfo>();
+    parameterScopeCards.forEach((card) => {
+      (Object.keys(card.groups) as ParameterStatusKind[]).forEach((kind) => {
+        card.groups[kind].forEach((item) => {
+          if (!map.has(item.path)) {
+            map.set(item.path, {
+              kind,
+              label: PARAMETER_STATUS_META[kind].label,
+              message: item.reason,
+            });
+          }
+        });
+      });
+    });
+    return map;
+  }, [parameterScopeCards]);
 
   const fetchCatalog = useCallback(async () => {
     setCatalogLoading(true);
@@ -1252,6 +1629,35 @@ export const FetchTaskManager = ({ token }: FetchTaskManagerProps) => {
     [tasks]
   );
 
+  const previewErrors = useMemo(
+    () => [...localPreviewIssues, ...(previewResult?.errors ?? [])],
+    [localPreviewIssues, previewResult?.errors]
+  );
+
+  const previewWarnings = previewResult?.warnings ?? [];
+
+  const canCreateJob =
+    !creating &&
+    !catalogLoading &&
+    !previewLoading &&
+    !previewBuildResult.error &&
+    previewErrors.length === 0 &&
+    previewResult?.valid !== false;
+
+  const renderFieldMeta = (path: string, fallbackText: string) => {
+    const statusInfo = fieldStatusMap.get(path);
+    return (
+      <>
+        {statusInfo ? (
+          <span className={cn("mt-2 inline-flex rounded-full border px-2 py-0.5 text-[10px] font-medium", PARAMETER_STATUS_META[statusInfo.kind].badgeClass)}>
+            {statusInfo.label}
+          </span>
+        ) : null}
+        <p className="mt-2 text-[11px] leading-5 text-ink-400">{statusInfo?.message ?? fallbackText}</p>
+      </>
+    );
+  };
+
   const applyJobFilters = () => {
     setJobStatusFilter(jobStatusInput);
     setJobModeFilter(jobModeInput);
@@ -1309,8 +1715,11 @@ export const FetchTaskManager = ({ token }: FetchTaskManagerProps) => {
           ? {
               ...item,
               task_name: taskName,
-              task_sub_type: String(catalogTask?.supportedSubTypes?.[0] ?? 1),
-              task_params: buildParamsRecord(catalogTask?.paramsSchema, catalogTask?.defaultParams),
+              task_sub_type: String(getSupportedSubTypes(catalogTask)[0] ?? 1),
+              task_params: buildParamsRecord(
+                getTaskFieldSchema(catalogTask, getSupportedSubTypes(catalogTask)[0] ?? 1),
+                catalogTask?.defaultParams
+              ),
             }
           : item
       )
@@ -1325,9 +1734,12 @@ export const FetchTaskManager = ({ token }: FetchTaskManagerProps) => {
           ? {
               ...item,
               task_name: taskName,
-              task_sub_type: String(catalogTask?.supportedSubTypes?.[0] ?? 1),
-              task_params: buildParamsRecord(catalogTask?.paramsSchema, catalogTask?.defaultParams),
-              task_set_mode: catalogTask?.taskSetModes?.[0] ?? item.task_set_mode,
+              task_sub_type: String(getSupportedSubTypes(catalogTask)[0] ?? 1),
+              task_params: buildParamsRecord(
+                getTaskFieldSchema(catalogTask, getSupportedSubTypes(catalogTask)[0] ?? 1),
+                catalogTask?.defaultParams
+              ),
+              task_set_mode: getAllowedTaskSetModes(catalogTask, getSupportedSubTypes(catalogTask)[0] ?? 1)[0] ?? item.task_set_mode,
             }
           : item
       )
@@ -1357,6 +1769,7 @@ export const FetchTaskManager = ({ token }: FetchTaskManagerProps) => {
         taskDrafts,
         taskSetDrafts,
         fetchInfoDraft,
+        executionOptions,
         catalog,
         jsonSpec
       );
@@ -1445,6 +1858,66 @@ export const FetchTaskManager = ({ token }: FetchTaskManagerProps) => {
       alert(error instanceof Error ? `批次失败重试失败：${error.message}` : "批次失败重试失败");
     } finally {
       setRetryingJobFailures(false);
+    }
+  };
+
+  const isCancelableJob = (status: string) => status === "PENDING" || status === "RUNNING";
+
+  const handleCancelJob = async (job: AdminFetchJob | AdminFetchJobDetail) => {
+    if (!isCancelableJob(job.status)) {
+      alert("当前批次状态不支持取消，只有 PENDING 或 RUNNING 才能取消。");
+      return;
+    }
+    if (
+      !window.confirm(
+        `确定要取消批次 ${job.jobUuid} 吗？该操作会把该批次下所有 PENDING/RUNNING 叶子任务标记为 CANCELLED。`
+      )
+    ) {
+      return;
+    }
+
+    setJobActionState({ jobUuid: job.jobUuid, action: "cancel" });
+    try {
+      await cancelFetchJob(token, job.jobUuid);
+      setSelectedTaskIds([]);
+      setJobsReloadKey((value) => value + 1);
+      setTasksReloadKey((value) => value + 1);
+      alert(`批次已取消：${job.jobUuid}`);
+    } catch (error) {
+      console.error("取消批次失败", error);
+      alert(error instanceof Error ? `取消批次失败：${error.message}` : "取消批次失败");
+    } finally {
+      setJobActionState(null);
+    }
+  };
+
+  const handleDeleteJob = async (job: AdminFetchJob | AdminFetchJobDetail) => {
+    if (
+      !window.confirm(
+        `确定要删除批次 ${job.jobUuid} 吗？该操作会物理删除批次及其所有叶子任务记录，无法恢复。`
+      )
+    ) {
+      return;
+    }
+
+    setJobActionState({ jobUuid: job.jobUuid, action: "delete" });
+    try {
+      await deleteFetchJob(token, job.jobUuid);
+      setSelectedTaskIds([]);
+      if (selectedJobUuid === job.jobUuid) {
+        setSelectedJobUuid(null);
+        setSelectedJobDetail(null);
+        setTasks([]);
+        setTasksTotal(0);
+      }
+      setJobsReloadKey((value) => value + 1);
+      setTasksReloadKey((value) => value + 1);
+      alert(`批次已删除：${job.jobUuid}`);
+    } catch (error) {
+      console.error("删除批次失败", error);
+      alert(error instanceof Error ? `删除批次失败：${error.message}` : "删除批次失败");
+    } finally {
+      setJobActionState(null);
     }
   };
 
@@ -1565,6 +2038,7 @@ export const FetchTaskManager = ({ token }: FetchTaskManagerProps) => {
                         setTaskDrafts,
                         setTaskSetDrafts,
                         setFetchInfoDraft,
+                        setExecutionOptions,
                         setJsonSpec
                       )
                     }
@@ -1576,6 +2050,72 @@ export const FetchTaskManager = ({ token }: FetchTaskManagerProps) => {
                 {!catalogLoading && (catalog?.quickPresets?.length ?? 0) === 0 ? (
                   <span className="text-xs text-ink-400">后端尚未返回 quick presets</span>
                 ) : null}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-sky-100 bg-sky-50/40 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h4 className="text-sm font-semibold text-ink-900">服务端异步编排</h4>
+                  <p className="mt-1 text-xs leading-5 text-ink-500">
+                    这里控制的是服务端展开后的派发并发度与节流，不是浏览器线程。提交后即使关闭页面，job 也会继续执行。
+                  </p>
+                </div>
+                <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-medium text-emerald-700">
+                  SERVER_ASYNC
+                </span>
+              </div>
+
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                <label className="block">
+                  <span className="mb-2 block text-xs font-medium text-ink-600">worker_threads</span>
+                  <input
+                    type="number"
+                    min={1}
+                    value={executionOptions.worker_threads}
+                    onChange={(event) =>
+                      setExecutionOptions((current) => ({
+                        ...current,
+                        worker_threads: event.target.value,
+                      }))
+                    }
+                    className={cn(
+                      "w-full rounded-xl border bg-white px-3 py-2 text-sm text-ink-900 focus:outline-none",
+                      fieldStatusMap.get("execution_options.worker_threads")?.kind
+                        ? PARAMETER_STATUS_META[fieldStatusMap.get("execution_options.worker_threads")!.kind].fieldClass
+                        : "border-gray-200 focus:border-sky-500"
+                    )}
+                  />
+                  {renderFieldMeta(
+                    "execution_options.worker_threads",
+                    "服务端展开并派发叶子任务时使用的并发 worker 数。必须大于 0。"
+                  )}
+                </label>
+
+                <label className="block">
+                  <span className="mb-2 block text-xs font-medium text-ink-600">task_interval_ms</span>
+                  <input
+                    type="number"
+                    min={0}
+                    value={executionOptions.task_interval_ms}
+                    onChange={(event) =>
+                      setExecutionOptions((current) => ({
+                        ...current,
+                        task_interval_ms: event.target.value,
+                      }))
+                    }
+                    className={cn(
+                      "w-full rounded-xl border bg-white px-3 py-2 text-sm text-ink-900 focus:outline-none",
+                      fieldStatusMap.get("execution_options.task_interval_ms")?.kind
+                        ? PARAMETER_STATUS_META[fieldStatusMap.get("execution_options.task_interval_ms")!.kind].fieldClass
+                        : "border-gray-200 focus:border-sky-500"
+                    )}
+                  />
+                  {renderFieldMeta(
+                    "execution_options.task_interval_ms",
+                    "服务端连续派发叶子请求之间的间隔，单位毫秒。允许为 0。"
+                  )}
+                </label>
               </div>
             </div>
 
@@ -1611,6 +2151,7 @@ export const FetchTaskManager = ({ token }: FetchTaskManagerProps) => {
                     <div className="mt-4 space-y-4">
                       {taskDrafts.map((draft, index) => {
                         const catalogTask = taskCatalogMap.get(draft.task_name);
+                        const visibleFields = getTaskFieldSchema(catalogTask, draft.task_sub_type);
                         return (
                           <div key={draft.id} className="rounded-2xl border border-white bg-white p-4 shadow-sm">
                             <div className="mb-4 flex items-center justify-between">
@@ -1646,7 +2187,7 @@ export const FetchTaskManager = ({ token }: FetchTaskManagerProps) => {
                                     </option>
                                   ))}
                                 </select>
-                                <p className="mt-2 text-[11px] leading-5 text-ink-400">{getFieldHelpText("task_name")}</p>
+                                {renderFieldMeta(`tasks[${index}].task_name`, getFieldHelpText("task_name"))}
                               </label>
 
                               <label className="block">
@@ -1662,23 +2203,26 @@ export const FetchTaskManager = ({ token }: FetchTaskManagerProps) => {
                                   }
                                   className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-ink-900 focus:border-sky-500 focus:outline-none"
                                 >
-                                  {(catalogTask?.supportedSubTypes ?? [1]).map((subType) => (
+                                  {getSupportedSubTypes(catalogTask).map((subType) => (
                                     <option key={subType} value={subType}>
-                                      {subType}
+                                      {getTaskVariant(catalogTask, subType)?.label
+                                        ? `${subType} · ${getTaskVariant(catalogTask, subType)?.label}`
+                                        : subType}
                                     </option>
                                   ))}
                                 </select>
-                                <p className="mt-2 text-[11px] leading-5 text-ink-400">{getFieldHelpText("task_sub_type")}</p>
+                                {renderFieldMeta(`tasks[${index}].task_sub_type`, getFieldHelpText("task_sub_type"))}
                               </label>
                             </div>
 
                             <div className="mt-4 grid gap-3 md:grid-cols-2">
-                              {(catalogTask?.paramsSchema ?? []).map((field) => (
+                              {visibleFields.map((field) => (
                                 <DynamicField
                                   key={field.name}
                                   field={field}
                                   value={draft.task_params[field.name] ?? ""}
-                                  helperText={field.placeholder || getFieldHelpText(field.name)}
+                                  helperText={field.description || field.placeholder || getFieldHelpText(field.name)}
+                                  statusInfo={fieldStatusMap.get(`tasks[${index}].task_params.${field.name}`)}
                                   onChange={(value) =>
                                     setTaskDrafts((current) =>
                                       current.map((item) =>
@@ -1730,9 +2274,16 @@ export const FetchTaskManager = ({ token }: FetchTaskManagerProps) => {
                     <div className="mt-4 space-y-4">
                       {taskSetDrafts.map((draft, index) => {
                         const catalogTask = taskCatalogMap.get(draft.task_name);
-                        const availableModes = catalogTask?.taskSetModes?.length
-                          ? catalogTask.taskSetModes
-                          : TASK_SET_MODE_OPTIONS.map((item) => item.value);
+                        const availableModes = getAllowedTaskSetModes(catalogTask, draft.task_sub_type);
+                        const visibleFields = getTaskFieldSchema(catalogTask, draft.task_sub_type).filter(
+                          (field) => {
+                            const normalizedName = normalizeTaskParamFieldName(field.name);
+                            if (TASK_SET_STRUCTURAL_PARAM_KEYS.has(normalizedName)) {
+                              return false;
+                            }
+                            return true;
+                          }
+                        );
 
                         return (
                           <div key={draft.id} className="rounded-2xl border border-white bg-white p-4 shadow-sm">
@@ -1767,7 +2318,7 @@ export const FetchTaskManager = ({ token }: FetchTaskManagerProps) => {
                                     </option>
                                   ))}
                                 </select>
-                                <p className="mt-2 text-[11px] leading-5 text-ink-400">{getFieldHelpText("task_name")}</p>
+                                {renderFieldMeta(`task_sets[${index}].task_name`, getFieldHelpText("task_name"))}
                               </label>
 
                               <label className="block">
@@ -1785,7 +2336,7 @@ export const FetchTaskManager = ({ token }: FetchTaskManagerProps) => {
                                     </option>
                                   ))}
                                 </select>
-                                <p className="mt-2 text-[11px] leading-5 text-ink-400">{getFieldHelpText("task_set_mode")}</p>
+                                {renderFieldMeta(`task_sets[${index}].task_set_mode`, getFieldHelpText("task_set_mode"))}
                               </label>
 
                               <label className="block">
@@ -1801,13 +2352,15 @@ export const FetchTaskManager = ({ token }: FetchTaskManagerProps) => {
                                   }
                                   className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-ink-900 focus:border-sky-500 focus:outline-none"
                                 >
-                                  {(catalogTask?.supportedSubTypes ?? [1, 3]).map((subType) => (
+                                  {getSupportedSubTypes(catalogTask).map((subType) => (
                                     <option key={subType} value={subType}>
-                                      {subType}
+                                      {getTaskVariant(catalogTask, subType)?.label
+                                        ? `${subType} · ${getTaskVariant(catalogTask, subType)?.label}`
+                                        : subType}
                                     </option>
                                   ))}
                                 </select>
-                                <p className="mt-2 text-[11px] leading-5 text-ink-400">{getFieldHelpText("task_sub_type")}</p>
+                                {renderFieldMeta(`task_sets[${index}].task_sub_type`, getFieldHelpText("task_sub_type"))}
                               </label>
                             </div>
 
@@ -1836,7 +2389,7 @@ export const FetchTaskManager = ({ token }: FetchTaskManagerProps) => {
                                     }
                                     className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-ink-900 focus:border-sky-500 focus:outline-none"
                                   />
-                                  <p className="mt-2 text-[11px] leading-5 text-ink-400">{getFieldHelpText("trade_dates_start_timestamp")}</p>
+                                  {renderFieldMeta(`task_sets[${index}].trade_dates.start_timestamp`, getFieldHelpText("trade_dates_start_timestamp"))}
                                 </label>
                                 <label className="block">
                                   <span className="mb-2 block text-xs font-medium text-ink-600">trade_dates.end_timestamp</span>
@@ -1860,7 +2413,7 @@ export const FetchTaskManager = ({ token }: FetchTaskManagerProps) => {
                                     }
                                     className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-ink-900 focus:border-sky-500 focus:outline-none"
                                   />
-                                  <p className="mt-2 text-[11px] leading-5 text-ink-400">{getFieldHelpText("trade_dates_end_timestamp")}</p>
+                                  {renderFieldMeta(`task_sets[${index}].trade_dates.end_timestamp`, getFieldHelpText("trade_dates_end_timestamp"))}
                                 </label>
                               </div>
                             )}
@@ -1889,7 +2442,7 @@ export const FetchTaskManager = ({ token }: FetchTaskManagerProps) => {
                                     }
                                     className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-ink-900 focus:border-sky-500 focus:outline-none"
                                   />
-                                  <p className="mt-2 text-[11px] leading-5 text-ink-400">{getFieldHelpText("date_range_start_date")}</p>
+                                  {renderFieldMeta(`task_sets[${index}].date_range.start_date`, getFieldHelpText("date_range_start_date"))}
                                 </label>
                                 <label className="block">
                                   <span className="mb-2 block text-xs font-medium text-ink-600">date_range.end_date</span>
@@ -1913,7 +2466,7 @@ export const FetchTaskManager = ({ token }: FetchTaskManagerProps) => {
                                     }
                                     className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-ink-900 focus:border-sky-500 focus:outline-none"
                                   />
-                                  <p className="mt-2 text-[11px] leading-5 text-ink-400">{getFieldHelpText("date_range_end_date")}</p>
+                                  {renderFieldMeta(`task_sets[${index}].date_range.end_date`, getFieldHelpText("date_range_end_date"))}
                                 </label>
                               </div>
                             )}
@@ -1944,7 +2497,7 @@ export const FetchTaskManager = ({ token }: FetchTaskManagerProps) => {
                                     }
                                     className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-ink-900 focus:border-sky-500 focus:outline-none"
                                   />
-                                  <p className="mt-2 text-[11px] leading-5 text-ink-400">{getFieldHelpText("offset_range_start")}</p>
+                                  {renderFieldMeta(`task_sets[${index}].offset_range.start`, getFieldHelpText("offset_range_start"))}
                                 </label>
                                 <label className="block">
                                   <span className="mb-2 block text-xs font-medium text-ink-600">offset_range.end</span>
@@ -1968,12 +2521,13 @@ export const FetchTaskManager = ({ token }: FetchTaskManagerProps) => {
                                     }
                                     className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-ink-900 focus:border-sky-500 focus:outline-none"
                                   />
-                                  <p className="mt-2 text-[11px] leading-5 text-ink-400">{getFieldHelpText("offset_range_end")}</p>
+                                  {renderFieldMeta(`task_sets[${index}].offset_range.end`, getFieldHelpText("offset_range_end"))}
                                 </label>
                                 <label className="block">
                                   <span className="mb-2 block text-xs font-medium text-ink-600">offset_range.step</span>
                                   <input
                                     type="number"
+                                    min={1}
                                     value={draft.offset_range.step}
                                     onChange={(event) =>
                                       setTaskSetDrafts((current) =>
@@ -1990,20 +2544,26 @@ export const FetchTaskManager = ({ token }: FetchTaskManagerProps) => {
                                         )
                                       )
                                     }
-                                    className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-ink-900 focus:border-sky-500 focus:outline-none"
+                                    className={cn(
+                                      "w-full rounded-xl border bg-white px-3 py-2 text-sm text-ink-900 focus:outline-none",
+                                      fieldStatusMap.get(`task_sets[${index}].offset_range.step`)?.kind
+                                        ? PARAMETER_STATUS_META[fieldStatusMap.get(`task_sets[${index}].offset_range.step`)!.kind].fieldClass
+                                        : "border-gray-200 focus:border-sky-500"
+                                    )}
                                   />
-                                  <p className="mt-2 text-[11px] leading-5 text-ink-400">{getFieldHelpText("offset_range_step")}</p>
+                                  {renderFieldMeta(`task_sets[${index}].offset_range.step`, getFieldHelpText("offset_range_step"))}
                                 </label>
                               </div>
                             )}
 
                             <div className="mt-4 grid gap-3 md:grid-cols-2">
-                              {(catalogTask?.paramsSchema ?? []).map((field) => (
+                              {visibleFields.map((field) => (
                                 <DynamicField
                                   key={field.name}
                                   field={field}
                                   value={draft.task_params[field.name] ?? ""}
-                                  helperText={field.placeholder || getFieldHelpText(field.name)}
+                                  helperText={field.description || field.placeholder || getFieldHelpText(field.name)}
+                                  statusInfo={fieldStatusMap.get(`task_sets[${index}].task_params.${field.name}`)}
                                   onChange={(value) =>
                                     setTaskSetDrafts((current) =>
                                       current.map((item) =>
@@ -2067,6 +2627,10 @@ export const FetchTaskManager = ({ token }: FetchTaskManagerProps) => {
                                 启用
                               </label>
                             </div>
+                            {renderFieldMeta(
+                              `fetch_info.${key}.enabled`,
+                              "关闭时会以 enabled=false 提交，后端不会为该信息源创建抓取任务。"
+                            )}
 
                             <div className="mt-4 grid gap-3 md:grid-cols-2">
                               {(catalogEntry?.paramsSchema ?? []).map((field) => (
@@ -2074,7 +2638,8 @@ export const FetchTaskManager = ({ token }: FetchTaskManagerProps) => {
                                   key={field.name}
                                   field={field}
                                   value={entry.params[field.name] ?? ""}
-                                  helperText={field.placeholder || getFieldHelpText(field.name)}
+                                  helperText={field.description || field.placeholder || getFieldHelpText(field.name)}
+                                  statusInfo={fieldStatusMap.get(`fetch_info.${key}.${field.name}`)}
                                   onChange={(value) =>
                                     setFetchInfoDraft((current) => ({
                                       ...current,
@@ -2102,62 +2667,171 @@ export const FetchTaskManager = ({ token }: FetchTaskManagerProps) => {
             <div className="rounded-2xl border border-sky-100 bg-sky-50/40 p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h4 className="text-sm font-semibold text-ink-900">文字说明预览</h4>
+                  <h4 className="text-sm font-semibold text-ink-900">参数状态面板</h4>
                   <p className="mt-1 text-xs leading-5 text-ink-500">
-                    这里会把你当前填写的参数翻译成中文说明，尽量描述出实际会发出的抓取行为和叶子请求。
+                    状态完全以后端 `fetch-jobs:preview` 返回为准。这里会明确标出当前生效、必填未填、无效和非法参数。
                   </p>
                 </div>
                 <span className="rounded-full border border-sky-200 bg-white px-3 py-1 text-xs font-medium text-sky-700">
-                  {textPreviewBlocks.length} 个说明块
+                  {parameterScopeCards.length} 个作用域
                 </span>
               </div>
 
+              {previewBuildResult.error ? (
+                <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                  当前配置无法构建预览请求：{previewBuildResult.error}
+                </div>
+              ) : null}
+
+              {previewErrors.length > 0 ? (
+                <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3">
+                  <p className="text-sm font-semibold text-red-700">当前存在非法配置，提交按钮已禁用</p>
+                  <div className="mt-2 space-y-1 text-xs leading-6 text-red-700">
+                    {previewErrors.map((issue, index) => (
+                      <p key={`${issue.path}-${index}`}>{issue.path}：{issue.message}</p>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {previewWarnings.length > 0 ? (
+                <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+                  <p className="text-sm font-semibold text-amber-700">当前有参数会被忽略或按默认规则处理</p>
+                  <div className="mt-2 space-y-1 text-xs leading-6 text-amber-700">
+                    {previewWarnings.map((issue, index) => (
+                      <p key={`${issue.path}-${index}`}>{issue.path}：{issue.message}</p>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
               <div className="mt-4 space-y-4">
-                {textPreviewBlocks.map((block) => (
-                  <div key={block.key} className="rounded-2xl border border-white bg-white p-4 shadow-sm">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <h5 className="text-sm font-semibold text-ink-900">{block.title}</h5>
-                      <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-700">
-                        预计 {block.requestCount} 个叶子请求
-                      </span>
-                    </div>
-                    <p className="mt-3 text-sm leading-6 text-ink-600">{block.summary}</p>
+                {parameterScopeCards.length === 0 && !previewLoading ? (
+                  <div className="rounded-2xl border border-dashed border-sky-200 bg-white px-4 py-6 text-sm text-ink-400">
+                    继续填写参数后，这里会显示每个作用域下哪些字段生效、缺失或被忽略。
+                  </div>
+                ) : null}
 
-                    <div className="mt-4 grid gap-4">
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-sky-600">
-                          请求行为
-                        </p>
-                        <div className="mt-2 space-y-2">
-                          {block.requestLines.map((line, lineIndex) => (
-                            <p key={`${block.key}-request-${lineIndex}`} className="rounded-xl bg-slate-50 px-3 py-2 text-xs leading-6 text-ink-700">
-                              {line}
+                {parameterScopeCards.map((card) => (
+                  <div key={card.scope} className="rounded-2xl border border-white bg-white p-4 shadow-sm">
+                    <h5 className="text-sm font-semibold text-ink-900">{card.title}</h5>
+                    <div className="mt-4 space-y-3">
+                      {(Object.keys(card.groups) as ParameterStatusKind[]).map((kind) =>
+                        card.groups[kind].length > 0 ? (
+                          <div key={kind}>
+                            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-sky-600">
+                              {PARAMETER_STATUS_META[kind].label}
                             </p>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-sky-600">
-                          参数说明
-                        </p>
-                        <div className="mt-2 space-y-2">
-                          {block.parameterLines.map((line, lineIndex) => (
-                            <p key={`${block.key}-param-${lineIndex}`} className="rounded-xl bg-sky-50/60 px-3 py-2 text-xs leading-6 text-ink-600">
-                              {line}
-                            </p>
-                          ))}
-                        </div>
-                      </div>
+                            <div className="mt-2 space-y-2">
+                              {card.groups[kind].map((item) => (
+                                <div key={item.path} className={cn("rounded-xl px-3 py-2 text-xs leading-6", PARAMETER_STATUS_META[kind].cardClass)}>
+                                  <div className="font-semibold">{item.label}：{item.value}</div>
+                                  <div>{item.reason}</div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null
+                      )}
                     </div>
                   </div>
                 ))}
               </div>
             </div>
 
-            <ActionButton className="w-full" onClick={handleCreateJob} disabled={creating || catalogLoading}>
+            <div className="rounded-2xl border border-sky-100 bg-sky-50/40 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h4 className="text-sm font-semibold text-ink-900">执行行为预览</h4>
+                  <p className="mt-1 text-xs leading-5 text-ink-500">
+                    中文说明、展开数量和叶子请求示例都以服务端 preview 结果为准，不再由浏览器本地硬编码推导。
+                  </p>
+                </div>
+                {previewLoading ? <Loader2 size={16} className="animate-spin text-sky-600" /> : null}
+              </div>
+
+              {(previewResult?.behaviorSummary ?? []).some((block) =>
+                block.scope.includes("index_quote") || block.scope.includes("index_weight")
+              ) ? (
+                <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                  <p className="text-sm font-semibold text-amber-800">重要说明：双层 offset/limit 语义</p>
+                  <p className="mt-2 text-xs leading-6 text-amber-700">
+                    当前任务包含 <code className="rounded bg-amber-100 px-1.5 py-0.5 text-[11px]">index_quote</code> 或 <code className="rounded bg-amber-100 px-1.5 py-0.5 text-[11px]">index_weight</code> 任务类型。
+                    此类任务使用<strong>双层 offset/limit 机制</strong>：
+                  </p>
+                  <ul className="mt-2 ml-4 text-xs leading-6 text-amber-700 list-disc space-y-1">
+                    <li>
+                      <strong>第一层（本地指数池）</strong>：<code className="rounded bg-amber-100 px-1.5 py-0.5 text-[11px]">offset</code> + <code className="rounded bg-amber-100 px-1.5 py-0.5 text-[11px]">limit</code> 参数控制从本地指数池中选取哪一批指数代码
+                    </li>
+                    <li>
+                      <strong>第二层（TuShare 分页）</strong>：<code className="rounded bg-amber-100 px-1.5 py-0.5 text-[11px]">offset_range.start/end/step</code> 控制对每个指数向 TuShare 发送分页请求的次数和 offset 值
+                    </li>
+                  </ul>
+                  <p className="mt-2 text-xs leading-6 text-amber-700">
+                    当前后端的 <code className="rounded bg-amber-100 px-1.5 py-0.5 text-[11px]">api_limit</code> 和 <code className="rounded bg-amber-100 px-1.5 py-0.5 text-[11px]">api_offset</code> 字段为预留字段，暂未生效。
+                  </p>
+                </div>
+              ) : null}
+
+              {previewError ? (
+                <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                  预览请求失败：{previewError}
+                </div>
+              ) : null}
+
+              {previewResult?.executionPlan ? (
+                <div className="mt-4 rounded-2xl border border-white bg-white p-4 shadow-sm">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-medium text-emerald-700">
+                      {previewResult.executionPlan.orchestrationMode ?? "SERVER_ASYNC"}
+                    </span>
+                    <span className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-[11px] font-medium text-sky-700">
+                      worker_threads={previewResult.executionPlan.workerThreads ?? "未返回"}
+                    </span>
+                    <span className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-[11px] font-medium text-sky-700">
+                      task_interval_ms={previewResult.executionPlan.taskIntervalMs ?? "未返回"}
+                    </span>
+                  </div>
+                  <p className="mt-3 text-sm leading-6 text-ink-600">
+                    {previewResult.executionPlan.note ?? "提交后由服务端继续展开、并发派发和重试，关闭页面不会中断已提交的 job。"}
+                  </p>
+                </div>
+              ) : null}
+
+              <div className="mt-4 space-y-4">
+                {(previewResult?.behaviorSummary ?? []).length === 0 && !previewLoading ? (
+                  <div className="rounded-2xl border border-dashed border-sky-200 bg-white px-4 py-6 text-sm text-ink-400">
+                    继续填写参数后，这里会出现服务端返回的中文行为说明和叶子请求样例。
+                  </div>
+                ) : null}
+
+                {(previewResult?.behaviorSummary ?? []).map((block) => (
+                  <div key={block.scope} className="rounded-2xl border border-white bg-white p-4 shadow-sm">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <h5 className="text-sm font-semibold text-ink-900">{block.title}</h5>
+                      <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-700">
+                        预计 {block.expansionCount ?? 0} 个叶子请求
+                      </span>
+                    </div>
+                    <p className="mt-3 text-sm leading-6 text-ink-600">{block.description}</p>
+                    {(block.sampleLeafRequests?.length ?? 0) > 0 ? (
+                      <div className="mt-4 space-y-2">
+                        {block.sampleLeafRequests?.map((item, itemIndex) => (
+                          <div key={`${block.scope}-${itemIndex}`} className="rounded-xl bg-slate-50 px-3 py-2 text-xs leading-6 text-ink-700">
+                            <div className="font-semibold">{item.title}</div>
+                            <div>{item.description}</div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <ActionButton className="w-full" onClick={handleCreateJob} disabled={!canCreateJob}>
               {creating ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
-              {creating ? "创建中..." : "创建抓取批次"}
+              {creating ? "创建中..." : previewLoading ? "预览校验中..." : "创建抓取批次"}
             </ActionButton>
           </div>
         </div>
@@ -2260,6 +2934,7 @@ export const FetchTaskManager = ({ token }: FetchTaskManagerProps) => {
                       <tbody className="divide-y divide-sky-100 bg-white">
                         {jobs.map((job) => {
                           const active = selectedJobUuid === job.jobUuid;
+                          const isActingOnThisJob = jobActionState?.jobUuid === job.jobUuid;
                           return (
                             <tr
                               key={job.jobUuid}
@@ -2285,13 +2960,59 @@ export const FetchTaskManager = ({ token }: FetchTaskManagerProps) => {
                               </td>
                               <td className="px-4 py-3 text-sm text-ink-500">{formatDateTime(job.updatedAt)}</td>
                               <td className="px-4 py-3 text-right">
-                                <button
-                                  type="button"
-                                  className="inline-flex items-center gap-1 text-sm font-medium text-sky-600 hover:text-sky-700"
-                                >
-                                  查看
-                                  <ChevronRight size={14} />
-                                </button>
+                                <div className="flex justify-end gap-2">
+                                  <ActionButton
+                                    type="button"
+                                    variant="ghost"
+                                    className="px-3 py-1.5 text-xs"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      setSelectedJobUuid(job.jobUuid);
+                                      setTasksPage(1);
+                                    }}
+                                  >
+                                    查看
+                                    <ChevronRight size={14} />
+                                  </ActionButton>
+                                  {isCancelableJob(job.status) ? (
+                                    <ActionButton
+                                      type="button"
+                                      variant="outline"
+                                      className="px-3 py-1.5 text-xs"
+                                      disabled={isActingOnThisJob}
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        void handleCancelJob(job);
+                                      }}
+                                    >
+                                      {jobActionState?.jobUuid === job.jobUuid &&
+                                      jobActionState.action === "cancel" ? (
+                                        <Loader2 size={14} className="animate-spin" />
+                                      ) : (
+                                        <X size={14} />
+                                      )}
+                                      取消
+                                    </ActionButton>
+                                  ) : null}
+                                  <ActionButton
+                                    type="button"
+                                    variant="danger"
+                                    className="px-3 py-1.5 text-xs"
+                                    disabled={isActingOnThisJob}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      void handleDeleteJob(job);
+                                    }}
+                                  >
+                                    {jobActionState?.jobUuid === job.jobUuid &&
+                                    jobActionState.action === "delete" ? (
+                                      <Loader2 size={14} className="animate-spin" />
+                                    ) : (
+                                      <Trash2 size={14} />
+                                    )}
+                                    删除
+                                  </ActionButton>
+                                </div>
                               </td>
                             </tr>
                           );
@@ -2345,17 +3066,80 @@ export const FetchTaskManager = ({ token }: FetchTaskManagerProps) => {
               </div>
             ) : (
               <div className="mt-4 space-y-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className={cn("inline-flex rounded-full border px-2.5 py-1 text-xs font-medium", getStatusBadgeClass(selectedJobDetail.status))}>
+                    {selectedJobDetail.status}
+                  </span>
+                  {isCancelableJob(selectedJobDetail.status) ? (
+                    <ActionButton
+                      variant="outline"
+                      disabled={jobActionState?.jobUuid === selectedJobDetail.jobUuid}
+                      onClick={() => void handleCancelJob(selectedJobDetail)}
+                    >
+                      {jobActionState?.jobUuid === selectedJobDetail.jobUuid &&
+                      jobActionState.action === "cancel" ? (
+                        <Loader2 size={16} className="animate-spin" />
+                      ) : (
+                        <X size={16} />
+                      )}
+                      取消当前批次
+                    </ActionButton>
+                  ) : null}
+                  <ActionButton
+                    variant="danger"
+                    disabled={jobActionState?.jobUuid === selectedJobDetail.jobUuid}
+                    onClick={() => void handleDeleteJob(selectedJobDetail)}
+                  >
+                    {jobActionState?.jobUuid === selectedJobDetail.jobUuid &&
+                    jobActionState.action === "delete" ? (
+                      <Loader2 size={16} className="animate-spin" />
+                    ) : (
+                      <Trash2 size={16} />
+                    )}
+                    删除当前批次
+                  </ActionButton>
+                </div>
+
                 <div className="grid gap-3 md:grid-cols-3">
                   {[
+                    { label: "状态", value: selectedJobDetail.status },
                     { label: "模式", value: getModeLabel(selectedJobDetail.mode) },
                     { label: "展开任务数", value: selectedJobDetail.expandedTaskCount },
                     { label: "成功 / 失败", value: `${selectedJobDetail.successCount} / ${selectedJobDetail.failureCount}` },
+                    {
+                      label: "服务端并发度",
+                      value:
+                        selectedJobDetail.dispatchStats?.workerThreads ??
+                        selectedJobDetail.executionOptions?.workerThreads ??
+                        "-",
+                    },
+                    {
+                      label: "派发间隔(ms)",
+                      value:
+                        selectedJobDetail.dispatchStats?.taskIntervalMs ??
+                        selectedJobDetail.executionOptions?.taskIntervalMs ??
+                        "-",
+                    },
+                    {
+                      label: "已派发 / 待派发",
+                      value: `${selectedJobDetail.dispatchStats?.dispatchedCount ?? 0} / ${
+                        selectedJobDetail.dispatchStats?.pendingDispatchCount ?? 0
+                      }`,
+                    },
                   ].map((item) => (
                     <div key={item.label} className="rounded-2xl border border-sky-100 bg-sky-50/40 p-4">
                       <p className="text-xs uppercase tracking-[0.24em] text-ink-500">{item.label}</p>
                       <p className="mt-3 text-lg font-semibold text-ink-900">{item.value}</p>
                     </div>
                   ))}
+                </div>
+
+                <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4">
+                  <p className="text-xs uppercase tracking-[0.24em] text-emerald-700">执行编排说明</p>
+                  <p className="mt-3 text-sm leading-6 text-emerald-900">
+                    {selectedJobDetail.orchestrationNote ??
+                      "当前 job 由服务端异步展开和派发。刷新、关闭或切换页面不会中断已经提交的任务。"}
+                  </p>
                 </div>
 
                 <div className="grid gap-4 lg:grid-cols-2">
