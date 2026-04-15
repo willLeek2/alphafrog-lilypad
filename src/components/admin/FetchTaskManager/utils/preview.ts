@@ -14,7 +14,7 @@ import { getTaskKindLabel, getTaskSetModeLabel, formatJson, toInputValue } from 
 import { summarizeTaskBehavior, describeLeafRequest } from "./taskBehavior";
 import { buildTaskSpec, buildTaskSetSpec, parseNumber } from "./payload";
 import { createTaskDraft, createTaskSetDraft, buildFetchInfoDraft } from "./draft";
-import { compactDate, formatDateAsCompact, formatDateAsDashed, enumerateDates } from "./dates";
+import { compactDate, formatDateAsCompact, enumerateDates } from "./dates";
 import { enumerateOffsets } from "./offsets";
 
 export const buildTaskPreviewBlock = (draft: TaskDraft, task: AdminFetchCatalogTask | undefined, index: number): TextPreviewBlock => {
@@ -32,6 +32,17 @@ export const buildTaskPreviewBlock = (draft: TaskDraft, task: AdminFetchCatalogT
       ...Object.keys(draft.task_params).map((fieldName) => `${fieldName}：${getFieldHelpText(fieldName)}`),
     ],
   };
+};
+
+const computeIndexBatchCount = (draft: TaskSetDraft) => {
+  const rawOffset = draft.task_params.index_offset ?? draft.task_params.offset ?? "0";
+  const rawLimit = draft.task_params.index_limit ?? draft.task_params.limit ?? "5000";
+  const rawCountLimit = draft.task_params.index_count_limit ?? rawLimit;
+  const baseOffset = Number(rawOffset) || 0;
+  const batchSize = Number(rawLimit) || 5000;
+  const indexCountLimit = Number(rawCountLimit) || batchSize;
+  const effectiveCount = Math.max(0, indexCountLimit - baseOffset);
+  return Math.max(1, Math.ceil(effectiveCount / batchSize));
 };
 
 export const buildTaskSetPreviewBlock = (
@@ -92,6 +103,52 @@ export const buildTaskSetPreviewBlock = (
         })}`
       );
     });
+  } else if (draft.task_set_mode === "index_batches") {
+    const batchCount = computeIndexBatchCount(draft);
+    for (let b = 0; b < batchCount; b++) {
+      const offset = Number(draft.task_params.index_offset ?? draft.task_params.offset ?? "0");
+      const limit = Number(draft.task_params.index_limit ?? draft.task_params.limit ?? "5000");
+      requestLines.push(
+        `请求 ${b + 1}：${describeLeafRequest(draft.task_name, Number(spec.task_sub_type ?? 1), {
+          ...baseParams,
+          index_offset: offset + b * limit,
+          index_limit: limit,
+        })}`
+      );
+    }
+  } else if (draft.task_set_mode === "trade_dates_with_index_batches") {
+    const dates = enumerateDates(draft.trade_dates.start_timestamp, draft.trade_dates.end_timestamp);
+    const batchCount = computeIndexBatchCount(draft);
+    const offset = Number(draft.task_params.index_offset ?? draft.task_params.offset ?? "0");
+    const limit = Number(draft.task_params.index_limit ?? draft.task_params.limit ?? "5000");
+    dates.forEach((date) => {
+      for (let b = 0; b < batchCount; b++) {
+        requestLines.push(
+          `请求 ${requestLines.length + 1}：${describeLeafRequest(draft.task_name, Number(spec.task_sub_type ?? 1), {
+            ...baseParams,
+            trade_date: task?.dateStyle === "yyyyMMdd" ? formatDateAsCompact(date) : undefined,
+            trade_date_timestamp: task?.dateStyle === "yyyyMMdd" ? undefined : Number(formatDateAsCompact(date)),
+            index_offset: offset + b * limit,
+            index_limit: limit,
+          })}`
+        );
+      }
+    });
+  } else if (draft.task_set_mode === "date_range_with_index_batches") {
+    const batchCount = computeIndexBatchCount(draft);
+    const offset = Number(draft.task_params.index_offset ?? draft.task_params.offset ?? "0");
+    const limit = Number(draft.task_params.index_limit ?? draft.task_params.limit ?? "5000");
+    for (let b = 0; b < batchCount; b++) {
+      requestLines.push(
+        `请求 ${b + 1}：${describeLeafRequest(draft.task_name, Number(spec.task_sub_type ?? 1), {
+          ...baseParams,
+          start_date: compactDate(draft.date_range.start_date),
+          end_date: compactDate(draft.date_range.end_date),
+          index_offset: offset + b * limit,
+          index_limit: limit,
+        })}`
+      );
+    }
   }
 
   const visibleLines = requestLines.slice(0, 12);
@@ -108,13 +165,20 @@ export const buildTaskSetPreviewBlock = (
     `task_set_mode：${getFieldHelpText("task_set_mode")}`,
   ];
 
-  if (draft.task_set_mode === "trade_dates" || draft.task_set_mode === "trade_dates_with_offsets") {
+  if (
+    draft.task_set_mode === "trade_dates" ||
+    draft.task_set_mode === "trade_dates_with_offsets" ||
+    draft.task_set_mode === "trade_dates_with_index_batches"
+  ) {
     parameterLines.push(
       `trade_dates.start_timestamp：${getFieldHelpText("trade_dates_start_timestamp")}`,
       `trade_dates.end_timestamp：${getFieldHelpText("trade_dates_end_timestamp")}`
     );
   }
-  if (draft.task_set_mode === "date_range_with_offsets") {
+  if (
+    draft.task_set_mode === "date_range_with_offsets" ||
+    draft.task_set_mode === "date_range_with_index_batches"
+  ) {
     parameterLines.push(
       `date_range.start_date：${getFieldHelpText("date_range_start_date")}`,
       `date_range.end_date：${getFieldHelpText("date_range_end_date")}`

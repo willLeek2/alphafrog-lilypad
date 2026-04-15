@@ -10,10 +10,18 @@ import type {
   AdminFetchTaskSpec,
 } from "../../../../types/admin";
 import type { FetchInfoDraftEntry, TaskDraft, TaskSetDraft } from "../types";
-import { createDraftId } from "../utils";
+import { createDraftId } from "./draftId";
 import { buildParamsRecord, normalizeTaskSubType } from "./taskParams";
-import { getTaskCatalog, getTaskFieldSchema, getSupportedSubTypes } from "./catalog";
-import { toInputValue, expandDate } from "./formatters";
+import {
+  getTaskCatalog,
+  getTaskSetCatalog,
+  getTaskFieldSchema,
+  getSupportedSubTypes,
+  getSupportedTaskSetSubTypes,
+  getTaskSetVariant,
+} from "./catalog";
+import { toInputValue } from "./formatters";
+import { expandDate } from "./dates";
 
 export const createTaskDraft = (
   catalog: AdminFetchCatalogResponse | null,
@@ -41,33 +49,31 @@ export const createTaskSetDraft = (
   source?: AdminFetchTaskSetSpec
 ): TaskSetDraft => {
   const firstTaskSetCatalog =
-    catalog?.taskCatalog.find((item) => (item.taskSetModes?.length ?? 0) > 0) ?? catalog?.taskCatalog[0];
+    catalog?.taskSetCatalog?.[0] ?? catalog?.taskCatalog[0];
   const catalogTask =
-    getTaskCatalog(catalog, preferredTaskName || source?.task_name || "") ?? firstTaskSetCatalog;
-  const defaultMode = source?.task_set_mode
-    ? String(source.task_set_mode)
-    : catalogTask?.taskSetModes?.[0] ?? "trade_dates";
+    getTaskSetCatalog(catalog, preferredTaskName || source?.task_name || "") ?? firstTaskSetCatalog;
+
+  const taskSetSubType =
+    source?.task_set_sub_type ?? source?.task_sub_type ?? getSupportedTaskSetSubTypes(catalogTask)[0] ?? 1;
+  const variant = getTaskSetVariant(catalogTask, taskSetSubType);
+  const taskSetMode =
+    (source?.task_set_mode as AdminFetchTaskSetMode) ??
+    (variant?.allowedTaskSetModes?.[0] as AdminFetchTaskSetMode) ??
+    "trade_dates";
 
   return {
     id: createDraftId(),
     task_name: catalogTask?.taskName ?? preferredTaskName ?? String(source?.task_name ?? ""),
-    task_sub_type: normalizeTaskSubType(
-      source?.task_sub_type,
-      String(
-        defaultMode === "date_range_with_offsets"
-          ? 3
-          : getSupportedSubTypes(catalogTask)[0] ?? 1
-      )
-    ),
+    task_sub_type: normalizeTaskSubType(source?.task_sub_type, String(taskSetSubType)),
     task_params: buildParamsRecord(
-      getTaskFieldSchema(catalogTask, source?.task_sub_type),
+      getTaskFieldSchema(catalogTask, taskSetSubType),
       catalogTask?.defaultParams,
       source?.task_params
     ),
-    task_set_mode: (defaultMode as AdminFetchTaskSetMode) ?? "trade_dates",
+    task_set_mode: taskSetMode,
     trade_dates: {
-      start_timestamp: expandDate(source?.trade_dates?.start_timestamp as string | number | undefined),
-      end_timestamp: expandDate(source?.trade_dates?.end_timestamp as string | number | undefined),
+      start_timestamp: expandDate((source?.trade_dates?.start_date ?? source?.trade_dates?.start_timestamp) as string | number | undefined),
+      end_timestamp: expandDate((source?.trade_dates?.end_date ?? source?.trade_dates?.end_timestamp) as string | number | undefined),
     },
     date_range: {
       start_date: expandDate(source?.date_range?.start_date as string | number | undefined),

@@ -38,6 +38,9 @@ export const TASK_SET_MODE_OPTIONS: Array<{ value: AdminFetchTaskSetMode; label:
   { value: "offsets", label: "按 offset 展开" },
   { value: "trade_dates_with_offsets", label: "日期 + offset 组合" },
   { value: "date_range_with_offsets", label: "固定日期范围 + offset" },
+  { value: "index_batches", label: "按本地指数批次展开" },
+  { value: "trade_dates_with_index_batches", label: "日期 × 本地指数批次" },
+  { value: "date_range_with_index_batches", label: "固定日期范围 × 本地指数批次" },
 ];
 
 export const PARAM_HELP_TEXT: Record<string, string> = {
@@ -91,6 +94,8 @@ export const TASK_KIND_LABELS: Record<string, string> = {
 export const TASK_SET_STRUCTURAL_PARAM_KEYS = new Set([
   "trade_dates.start_timestamp",
   "trade_dates.end_timestamp",
+  "trade_dates.start_date",
+  "trade_dates.end_date",
   "date_range.start_date",
   "date_range.end_date",
   "offset_range.start",

@@ -12,8 +12,8 @@ import type {
 } from "../../../../types/admin";
 import type { EditorMode, ExecutionOptionsDraft, FetchInfoDraftEntry, TaskDraft, TaskSetDraft } from "../types";
 import { getTaskCatalog, getTaskFieldSchema } from "./catalog";
-import { normalizeTaskParamFieldName } from "./taskParams";
-import { compactDate, parseDateInput } from "./dates";
+import { normalizeTaskParamFieldName, buildParamsRecord } from "./taskParams";
+import { compactDate } from "./dates";
 
 export const parseNumber = (value: string) => {
   const trimmed = value.trim();
@@ -86,18 +86,26 @@ export const buildTaskSetSpec = (draft: TaskSetDraft, task: AdminFetchCatalogTas
   const spec: AdminFetchTaskSetSpec = {
     task_name: draft.task_name,
     task_sub_type: Number(draft.task_sub_type || task?.supportedSubTypes?.[0] || 1),
+    task_set_sub_type: Number(draft.task_sub_type || task?.supportedSubTypes?.[0] || 1),
     task_set_mode: draft.task_set_mode,
     task_params: buildTaskParams(draft, task),
   };
 
-  if (draft.task_set_mode === "trade_dates" || draft.task_set_mode === "trade_dates_with_offsets") {
+  if (
+    draft.task_set_mode === "trade_dates" ||
+    draft.task_set_mode === "trade_dates_with_offsets" ||
+    draft.task_set_mode === "trade_dates_with_index_batches"
+  ) {
     spec.trade_dates = {
-      start_timestamp: Number(compactDate(draft.trade_dates.start_timestamp)),
-      end_timestamp: Number(compactDate(draft.trade_dates.end_timestamp)),
+      start_date: compactDate(draft.trade_dates.start_timestamp),
+      end_date: compactDate(draft.trade_dates.end_timestamp),
     };
   }
 
-  if (draft.task_set_mode === "date_range_with_offsets") {
+  if (
+    draft.task_set_mode === "date_range_with_offsets" ||
+    draft.task_set_mode === "date_range_with_index_batches"
+  ) {
     spec.date_range = {
       start_date: compactDate(draft.date_range.start_date),
       end_date: compactDate(draft.date_range.end_date),
@@ -192,5 +200,3 @@ export const buildPayloadFromDrafts = (
 
   return payload;
 };
-
-import { buildParamsRecord } from "./taskParams";

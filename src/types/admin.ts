@@ -151,7 +151,8 @@ export type AdminFetchCatalogParamField = {
 };
 
 export type AdminFetchCatalogTaskVariant = {
-  taskSubType: number;
+  taskSubType?: number;
+  taskSetSubType?: number;
   label: string;
   description?: string;
   allowedTaskSetModes?: AdminFetchTaskSetMode[];
@@ -185,6 +186,7 @@ export type AdminFetchTaskSpec = {
 };
 
 export type AdminFetchTaskSetSpec = AdminFetchTaskSpec & {
+  task_set_sub_type?: number;
   task_set_mode?: AdminFetchTaskSetMode | string;
   expand_mode?: string;
   trade_dates?: Record<string, unknown>;
@@ -227,6 +229,7 @@ export type AdminFetchQuickPreset = {
 
 export type AdminFetchCatalogResponse = {
   taskCatalog: AdminFetchCatalogTask[];
+  taskSetCatalog: AdminFetchCatalogTask[];
   fetchInfoCatalog: {
     fund?: AdminFetchInfoCatalogEntry;
     stock?: AdminFetchInfoCatalogEntry;

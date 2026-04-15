@@ -90,7 +90,58 @@ import {
 } from "./FetchTaskManager/constants";
 
 import {
-  // 日期工具函数
+  // 工具函数（已从主文件拆分出去）
+  // formatters
+  formatDateTime,
+  formatJson,
+  toInputValue,
+  getStatusBadgeClass,
+  getModeLabel,
+  getTaskKindLabel,
+  getTaskSetModeLabel,
+  // taskParams
+  normalizeTaskParamFieldName,
+  readTaskFieldValue,
+  buildParamsRecord,
+  normalizeTaskSubType,
+  // catalog
+  getTaskCatalog,
+  getTaskSetCatalog,
+  getTaskVariant,
+  getTaskSetVariant,
+  getTaskFieldSchema,
+  getSupportedSubTypes,
+  getSupportedTaskSetSubTypes,
+  getAllowedTaskSetModes,
+  // taskBehavior
+  summarizeTaskBehavior,
+  describeLeafRequest,
+  // draft
+  createTaskDraft,
+  createTaskSetDraft,
+  buildFetchInfoDraft,
+  // payload
+  parseNumber,
+  serializeFieldValue,
+  buildTaskParams,
+  buildTaskSpec,
+  buildTaskSetSpec,
+  buildPayloadFromDrafts,
+  // preview
+  buildTaskPreviewBlock,
+  buildTaskSetPreviewBlock,
+  buildFetchInfoPreviewBlocks,
+  applyPresetSpec,
+  getScopeTitle,
+  addIssueMessage,
+  getIssueReason,
+  // offsets
+  enumerateOffsets,
+  // helpTexts
+  getFieldHelpText,
+  // draftId
+  createDraftId,
+  // dates
   compactDate,
   expandDate,
   formatDisplayDate,
@@ -99,312 +150,28 @@ import {
   formatDateAsDashed,
   enumerateDates,
   toDateTimeFilter,
-} from "./FetchTaskManager/utils/dates";
-
-// 注意：以下工具函数已拆分到 utils/ 子目录，但为避免大规模重构风险，
-// 暂时保留主文件中的定义。后续可逐步删除重复定义。
-// 已拆分的文件包括：
-// - utils/formatters.ts: formatDateTime, formatJson, toInputValue, getStatusBadgeClass, getModeLabel, getTaskKindLabel, getTaskSetModeLabel
-// - utils/taskParams.ts: normalizeTaskParamFieldName, readTaskFieldValue, buildParamsRecord, normalizeTaskSubType
-// - utils/catalog.ts: getTaskCatalog, getTaskVariant, getTaskFieldSchema, getSupportedSubTypes, getAllowedTaskSetModes
-// - utils/taskBehavior.ts: summarizeTaskBehavior, describeLeafRequest
-// - utils/draft.ts: createTaskDraft, createTaskSetDraft, buildFetchInfoDraft
-// - utils/payload.ts: parseNumber, serializeFieldValue, buildTaskParams, buildTaskSpec, buildTaskSetSpec, buildPayloadFromDrafts
-// - utils/preview.ts: buildTaskPreviewBlock, buildTaskSetPreviewBlock, buildFetchInfoPreviewBlocks, applyPresetSpec, getScopeTitle, addIssueMessage, getIssueReason
-// - utils/offsets.ts: enumerateOffsets
-// - utils/helpTexts.ts: getFieldHelpText
-// - utils/draftId.ts: createDraftId
-
-const normalizeTaskParamFieldName = (fieldName: string) =>
-  fieldName.startsWith("task_params.") ? fieldName.slice("task_params.".length) : fieldName;
+} from "./FetchTaskManager/utils";
 
 const isOffsetExpandingTaskSetMode = (mode: AdminFetchTaskSetMode) =>
   mode === "offsets" || mode === "trade_dates_with_offsets" || mode === "date_range_with_offsets";
-
-const formatDateTime = (value: string | null | undefined) => {
-  if (!value) return "-";
-  return new Date(value).toLocaleString("zh-CN");
-};
-
-const formatJson = (value: unknown) => {
-  if (value == null) return "-";
-  if (typeof value === "string") {
-    try {
-      return JSON.stringify(JSON.parse(value), null, 2);
-    } catch {
-      return value;
-    }
-  }
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return String(value);
-  }
-};
-
-const toInputValue = (value: unknown, key?: string) => {
-  if (value == null) return "";
-  if (typeof value === "boolean") return value ? "true" : "false";
-  if (typeof value === "number") {
-    if (key && key.toLowerCase().includes("date")) {
-      return expandDate(value);
-    }
-    return String(value);
-  }
-  const raw = String(value);
-  if (key && key.toLowerCase().includes("date")) {
-    return expandDate(raw);
-  }
-  return raw;
-};
-
-const getStatusBadgeClass = (status: string) => {
-  switch (status) {
-    case "PENDING":
-      return "border-amber-200 bg-amber-50 text-amber-700";
-    case "RUNNING":
-      return "border-sky-200 bg-sky-50 text-sky-700";
-    case "CANCELLED":
-      return "border-slate-200 bg-slate-100 text-slate-700";
-    case "SUCCESS":
-      return "border-green-200 bg-green-50 text-green-700";
-    case "FAILURE":
-      return "border-red-200 bg-red-50 text-red-700";
-    case "PARTIAL_FAILURE":
-      return "border-rose-200 bg-rose-50 text-rose-700";
-    default:
-      return "border-gray-200 bg-gray-50 text-gray-700";
-  }
-};
-
-const getModeLabel = (mode: string) =>
-  MODE_OPTIONS.find((item) => item.value === mode)?.label ?? mode;
-
-const getTaskKindLabel = (taskName: string) => TASK_KIND_LABELS[taskName] ?? taskName;
-
-const getTaskSetModeLabel = (mode: string) =>
-  TASK_SET_MODE_OPTIONS.find((item) => item.value === mode)?.label ?? mode;
-
-const readTaskFieldValue = (params: Record<string, unknown>, key: string) => {
-  const value = params[key];
-  return value == null || value === "" ? "未填写" : String(value);
-};
-
-const enumerateOffsets = (startValue: string, endValue: string, stepValue: string) => {
-  const start = parseNumber(startValue);
-  const end = parseNumber(endValue);
-  const step = parseNumber(stepValue);
-  if (start == null || end == null || step == null || step <= 0 || end < start) {
-    return [];
-  }
-  const result: number[] = [];
-  for (let current = start; current <= end; current += step) {
-    result.push(current);
-  }
-  return result;
-};
-
-const summarizeTaskBehavior = (taskName: string, taskSubType: number) => {
-  switch (taskName) {
-    case "stock_daily":
-      if (taskSubType === 1) {
-        return "按单个交易日抓取全市场股票日线。";
-      }
-      if (taskSubType === 3) {
-        return "按日期范围批量抓取全市场股票日线，偏历史初始化。";
-      }
-      break;
-    case "index_daily_basic":
-      if (taskSubType === 1) {
-        return "按指数代码加日期范围抓取指数估值指标。";
-      }
-      if (taskSubType === 2) {
-        return "按单个交易日抓取当日全部指数估值指标。";
-      }
-      if (taskSubType === 3) {
-        return "按日期范围批量抓取全部指数估值指标，偏历史初始化。";
-      }
-      break;
-    case "sw_industry_daily":
-      if (taskSubType === 1) {
-        return "按单个交易日抓取当日全部申万行业日线。";
-      }
-      if (taskSubType === 2) {
-        return "按行业指数代码加日期范围抓取申万行业日线。";
-      }
-      if (taskSubType === 3) {
-        return "按日期范围批量抓取全部申万行业日线，偏历史初始化。";
-      }
-      break;
-    case "fund_nav":
-      return "按单个交易日抓取全部基金净值。";
-    case "fund_manager":
-      return "按过滤条件抓取基金经理信息，也可以不加业务过滤直接分页扫全量。";
-    case "fund_share":
-      return taskSubType === 3
-        ? "按日期范围批量抓取基金份额。"
-        : "按单个交易日或筛选条件抓取基金份额。";
-    case "etf_share_size":
-      return taskSubType === 3
-        ? "按日期范围批量抓取 ETF 份额规模。"
-        : "按单个交易日或筛选条件抓取 ETF 份额规模。";
-    case "sw_industry_classify":
-      return "抓取申万行业分类，不填条件时走默认分类体系。";
-    case "sw_industry_member":
-      return "按行业编码、成分代码等过滤抓取申万行业成分，也可直接分页扫全量。";
-    case "ci_index_member":
-      return "按行业编码、成分代码等过滤抓取中信行业成分，也可直接分页扫全量。";
-    default:
-      return `抓取 ${getTaskKindLabel(taskName)} 数据。`;
-  }
-  return `抓取 ${getTaskKindLabel(taskName)} 数据。`;
-};
-
-const describeLeafRequest = (taskName: string, taskSubType: number, params: Record<string, unknown>) => {
-  const offset = readTaskFieldValue(params, "offset");
-  const limit = readTaskFieldValue(params, "limit");
-
-  switch (taskName) {
-    case "stock_daily":
-      if (taskSubType === 1) {
-        return `按交易日 ${readTaskFieldValue(params, "trade_date_timestamp")} 抓取全市场股票日线，分页参数为 offset=${offset}、limit=${limit}。`;
-      }
-      if (taskSubType === 3) {
-        return `按日期范围 ${readTaskFieldValue(params, "start_date")} 到 ${readTaskFieldValue(params, "end_date")} 抓取全市场股票日线，分页参数为 offset=${offset}、limit=${limit}。`;
-      }
-      break;
-    case "index_daily_basic":
-      if (taskSubType === 1) {
-        return `按指数代码 ${readTaskFieldValue(params, "ts_code")} 抓取 ${readTaskFieldValue(params, "start_date")} 到 ${readTaskFieldValue(params, "end_date")} 的指数估值指标，分页参数为 offset=${offset}、limit=${limit}。`;
-      }
-      if (taskSubType === 2) {
-        return `按交易日 ${readTaskFieldValue(params, "trade_date")} 抓取当日全部指数估值指标，分页参数为 offset=${offset}、limit=${limit}。`;
-      }
-      if (taskSubType === 3) {
-        return `按日期范围 ${readTaskFieldValue(params, "start_date")} 到 ${readTaskFieldValue(params, "end_date")} 抓取全部指数估值指标，分页参数为 offset=${offset}、limit=${limit}。`;
-      }
-      break;
-    case "sw_industry_daily":
-      if (taskSubType === 1) {
-        return `按交易日 ${readTaskFieldValue(params, "trade_date")} 抓取当日全部申万行业日线，分页参数为 offset=${offset}、limit=${limit}。`;
-      }
-      if (taskSubType === 2) {
-        return `按行业指数代码 ${readTaskFieldValue(params, "ts_code")} 抓取 ${readTaskFieldValue(params, "start_date")} 到 ${readTaskFieldValue(params, "end_date")} 的申万行业日线，分页参数为 offset=${offset}、limit=${limit}。`;
-      }
-      if (taskSubType === 3) {
-        return `按日期范围 ${readTaskFieldValue(params, "start_date")} 到 ${readTaskFieldValue(params, "end_date")} 抓取全部申万行业日线，分页参数为 offset=${offset}、limit=${limit}。`;
-      }
-      break;
-    case "fund_nav":
-      return `按交易日 ${readTaskFieldValue(params, "trade_date_timestamp")} 抓取全部基金净值，分页参数为 offset=${offset}、limit=${limit}。`;
-    case "fund_share":
-      if (taskSubType === 3) {
-        return `按日期范围 ${readTaskFieldValue(params, "start_date")} 到 ${readTaskFieldValue(params, "end_date")} 抓取基金份额，分页参数为 offset=${offset}、limit=${limit}。`;
-      }
-      return `按 trade_date=${readTaskFieldValue(params, "trade_date")}、ts_code=${readTaskFieldValue(params, "ts_code")}、market=${readTaskFieldValue(params, "market")} 等条件抓取基金份额，分页参数为 offset=${offset}、limit=${limit}。`;
-    case "etf_share_size":
-      if (taskSubType === 3) {
-        return `按日期范围 ${readTaskFieldValue(params, "start_date")} 到 ${readTaskFieldValue(params, "end_date")} 抓取 ETF 份额规模，分页参数为 offset=${offset}、limit=${limit}。`;
-      }
-      return `按 trade_date=${readTaskFieldValue(params, "trade_date")}、ts_code=${readTaskFieldValue(params, "ts_code")}、exchange=${readTaskFieldValue(params, "exchange")} 等条件抓取 ETF 份额规模，分页参数为 offset=${offset}、limit=${limit}。`;
-    case "fund_manager":
-      return `按 ts_code=${readTaskFieldValue(params, "ts_code")}、ann_date=${readTaskFieldValue(params, "ann_date")}、name=${readTaskFieldValue(params, "name")} 等条件抓取基金经理，分页参数为 offset=${offset}、limit=${limit}。`;
-    case "sw_industry_member":
-      return `按 l1/l2/l3/ts_code/is_new 等条件抓取申万行业成分，当前参数为 l1_code=${readTaskFieldValue(params, "l1_code")}、l2_code=${readTaskFieldValue(params, "l2_code")}、l3_code=${readTaskFieldValue(params, "l3_code")}、ts_code=${readTaskFieldValue(params, "ts_code")}、is_new=${readTaskFieldValue(params, "is_new")}，分页参数为 offset=${offset}、limit=${limit}。`;
-    case "ci_index_member":
-      return `按 l1/l2/l3/ts_code/is_new 等条件抓取中信行业成分，当前参数为 l1_code=${readTaskFieldValue(params, "l1_code")}、l2_code=${readTaskFieldValue(params, "l2_code")}、l3_code=${readTaskFieldValue(params, "l3_code")}、ts_code=${readTaskFieldValue(params, "ts_code")}、is_new=${readTaskFieldValue(params, "is_new")}，分页参数为 offset=${offset}、limit=${limit}。`;
-    case "sw_industry_classify":
-      return `抓取申万行业分类，当前参数为 level=${readTaskFieldValue(params, "level")}、src=${readTaskFieldValue(params, "src")}。`;
-    default:
-      return `抓取 ${getTaskKindLabel(taskName)}，请求参数为 ${formatJson(params)}。`;
-  }
-  return `抓取 ${getTaskKindLabel(taskName)}，请求参数为 ${formatJson(params)}。`;
-};
-
-const getFieldHelpText = (fieldName: string) => PARAM_HELP_TEXT[fieldName] ?? "该字段由后端 catalog 定义，当前前端没有更细的内置说明。";
-
-const buildParamsRecord = (
-  paramsSchema?: AdminFetchCatalogParamField[],
-  defaultParams?: Record<string, unknown>,
-  overrides?: Record<string, unknown>
-) => {
-  const record: Record<string, string> = {};
-  const knownKeys = new Set<string>();
-  (paramsSchema ?? []).forEach((field) => {
-    knownKeys.add(field.name);
-    const candidate = overrides?.[field.name] ?? defaultParams?.[field.name] ?? field.defaultValue;
-    record[field.name] = toInputValue(candidate, field.name);
-  });
-
-  Object.entries(defaultParams ?? {}).forEach(([key, value]) => {
-    if (!knownKeys.has(key)) {
-      record[key] = toInputValue(value, key);
-    }
-  });
-
-  Object.entries(overrides ?? {}).forEach(([key, value]) => {
-    if (!knownKeys.has(key)) {
-      record[key] = toInputValue(value, key);
-    }
-  });
-
-  return record;
-};
-
-const normalizeTaskSubType = (value: unknown, fallback = "1") => {
-  if (value == null || value === "") return fallback;
-  return String(value);
-};
-
-const getTaskCatalog = (catalog: AdminFetchCatalogResponse | null, taskName: string) =>
-  catalog?.taskCatalog.find((item) => item.taskName === taskName);
-
-const getTaskVariant = (
-  task: AdminFetchCatalogTask | undefined,
-  taskSubType: string | number | undefined
-): AdminFetchCatalogTaskVariant | undefined =>
-  task?.variants?.find((variant) => String(variant.taskSubType) === String(taskSubType));
-
-const getTaskFieldSchema = (
-  task: AdminFetchCatalogTask | undefined,
-  taskSubType: string | number | undefined
-) => {
-  const variant = getTaskVariant(task, taskSubType);
-  if (variant?.fields) return variant.fields;
-  // 如果指定的variant不存在，fallback到第一个variant的fields
-  if (task?.variants?.[0]?.fields) return task.variants[0].fields;
-  return task?.paramsSchema ?? [];
-};
-
-const getSupportedSubTypes = (task: AdminFetchCatalogTask | undefined) => {
-  const variantTypes = task?.variants?.map((variant) => variant.taskSubType) ?? [];
-  return variantTypes.length > 0 ? variantTypes : task?.supportedSubTypes ?? [1];
-};
-
-const getAllowedTaskSetModes = (
-  task: AdminFetchCatalogTask | undefined,
-  taskSubType: string | number | undefined
-) => {
-  const variantModes = getTaskVariant(task, taskSubType)?.allowedTaskSetModes;
-  if (variantModes?.length) return variantModes;
-  if (task?.taskSetModes?.length) return task.taskSetModes;
-  return TASK_SET_MODE_OPTIONS.map((item) => item.value);
-};
 
 const normalizePreviewPath = (
   scope: string,
   rawPath: string,
   taskDrafts: TaskDraft[],
   taskSetDrafts: TaskSetDraft[],
-  taskCatalogMap: Map<string, AdminFetchCatalogTask>
+  taskCatalogMap: Map<string, AdminFetchCatalogTask>,
+  taskSetCatalogMap: Map<string, AdminFetchCatalogTask>
 ) => {
   if (rawPath.startsWith(scope)) {
     return rawPath;
   }
 
-  const normalizeTaskScope = (draft: TaskDraft | TaskSetDraft | undefined, fieldPath: string) => {
+  const normalizeTaskScope = (draft: TaskDraft | TaskSetDraft | undefined, fieldPath: string, isTaskSet: boolean) => {
     if (!draft) return `${scope}.${fieldPath}`;
-    const task = taskCatalogMap.get(draft.task_name);
+    const task = isTaskSet
+      ? taskSetCatalogMap.get(draft.task_name) ?? taskCatalogMap.get(draft.task_name)
+      : taskCatalogMap.get(draft.task_name);
     const fieldNames = new Set(getTaskFieldSchema(task, draft.task_sub_type).map((item) => item.name));
     if (
       fieldPath === "task_name" ||
@@ -425,12 +192,12 @@ const normalizePreviewPath = (
 
   if (scope.startsWith("tasks[")) {
     const index = Number(scope.match(/^tasks\[(\d+)\]$/)?.[1] ?? -1);
-    return normalizeTaskScope(taskDrafts[index], rawPath);
+    return normalizeTaskScope(taskDrafts[index], rawPath, false);
   }
 
   if (scope.startsWith("task_sets[")) {
     const index = Number(scope.match(/^task_sets\[(\d+)\]$/)?.[1] ?? -1);
-    return normalizeTaskScope(taskSetDrafts[index], rawPath);
+    return normalizeTaskScope(taskSetDrafts[index], rawPath, true);
   }
 
   if (scope.startsWith("fetch_info.") || scope === "execution_options") {
@@ -439,513 +206,6 @@ const normalizePreviewPath = (
 
   return `${scope}.${rawPath}`;
 };
-
-const createTaskDraft = (
-  catalog: AdminFetchCatalogResponse | null,
-  preferredTaskName?: string,
-  source?: AdminFetchTaskSpec
-): TaskDraft => {
-  const catalogTask =
-    getTaskCatalog(catalog, preferredTaskName || source?.task_name || "") ?? catalog?.taskCatalog[0];
-
-  return {
-    id: createDraftId(),
-    task_name: catalogTask?.taskName ?? preferredTaskName ?? String(source?.task_name ?? ""),
-    task_sub_type: normalizeTaskSubType(source?.task_sub_type, String(getSupportedSubTypes(catalogTask)[0] ?? 1)),
-    task_params: buildParamsRecord(
-      getTaskFieldSchema(catalogTask, source?.task_sub_type),
-      catalogTask?.defaultParams,
-      source?.task_params
-    ),
-  };
-};
-
-const createTaskSetDraft = (
-  catalog: AdminFetchCatalogResponse | null,
-  preferredTaskName?: string,
-  source?: AdminFetchTaskSetSpec
-): TaskSetDraft => {
-  const firstTaskSetCatalog =
-    catalog?.taskCatalog.find((item) => (item.taskSetModes?.length ?? 0) > 0) ?? catalog?.taskCatalog[0];
-  const catalogTask =
-    getTaskCatalog(catalog, preferredTaskName || source?.task_name || "") ?? firstTaskSetCatalog;
-  const defaultMode = source?.task_set_mode
-    ? String(source.task_set_mode)
-    : catalogTask?.taskSetModes?.[0] ?? "trade_dates";
-
-  return {
-    id: createDraftId(),
-    task_name: catalogTask?.taskName ?? preferredTaskName ?? String(source?.task_name ?? ""),
-    task_sub_type: normalizeTaskSubType(
-      source?.task_sub_type,
-      String(
-        defaultMode === "date_range_with_offsets"
-          ? 3
-          : getSupportedSubTypes(catalogTask)[0] ?? 1
-      )
-    ),
-    task_params: buildParamsRecord(
-      getTaskFieldSchema(catalogTask, source?.task_sub_type),
-      catalogTask?.defaultParams,
-      source?.task_params
-    ),
-    task_set_mode: (defaultMode as AdminFetchTaskSetMode) ?? "trade_dates",
-    trade_dates: {
-      start_timestamp: expandDate(source?.trade_dates?.start_timestamp as string | number | undefined),
-      end_timestamp: expandDate(source?.trade_dates?.end_timestamp as string | number | undefined),
-    },
-    date_range: {
-      start_date: expandDate(source?.date_range?.start_date as string | number | undefined),
-      end_date: expandDate(source?.date_range?.end_date as string | number | undefined),
-    },
-    offset_range: {
-      start: toInputValue(
-        (source?.offset_range?.start as unknown) ?? source?.offset_start,
-        "offset_start"
-      ),
-      end: toInputValue(
-        (source?.offset_range?.end as unknown) ?? source?.offset_end,
-        "offset_end"
-      ),
-      step: toInputValue(
-        (source?.offset_range?.step as unknown) ?? source?.offset_step,
-        "offset_step"
-      ),
-    },
-  };
-};
-
-const buildFetchInfoDraft = (
-  catalog: AdminFetchCatalogResponse | null,
-  source?: AdminFetchInfoSpec
-): Record<"fund" | "stock" | "index", FetchInfoDraftEntry> => {
-  const createEntry = (key: "fund" | "stock" | "index", entry?: AdminFetchInfoCatalogEntry) => ({
-    enabled: Boolean(source?.[key]?.enabled),
-    params: buildParamsRecord(entry?.paramsSchema, entry?.defaultParams, source?.[key]),
-  });
-
-  return {
-    fund: createEntry("fund", catalog?.fetchInfoCatalog.fund),
-    stock: createEntry("stock", catalog?.fetchInfoCatalog.stock),
-    index: createEntry("index", catalog?.fetchInfoCatalog.index),
-  };
-};
-
-const parseNumber = (value: string) => {
-  const trimmed = value.trim();
-  if (!trimmed) return undefined;
-  const parsed = Number(trimmed);
-  return Number.isFinite(parsed) ? parsed : undefined;
-};
-
-const serializeFieldValue = (
-  field: AdminFetchCatalogParamField | undefined,
-  rawValue: string,
-  fieldName: string,
-  task?: AdminFetchCatalogTask
-) => {
-  const trimmed = rawValue.trim();
-  if (!trimmed) return undefined;
-  const fieldType = (field?.inputType ?? field?.type ?? "").toLowerCase();
-
-  if (fieldType === "number" || fieldType === "integer") {
-    return parseNumber(trimmed);
-  }
-
-  if (fieldType === "boolean") {
-    return trimmed === "true";
-  }
-
-  if (fieldType === "json") {
-    return JSON.parse(trimmed);
-  }
-
-  if (fieldType === "date" || fieldName.toLowerCase().includes("date")) {
-    if (fieldName.toLowerCase().includes("timestamp")) {
-      const normalized = compactDate(trimmed);
-      const parsed = Number(normalized);
-      return Number.isFinite(parsed) ? parsed : trimmed;
-    }
-    if (task?.dateStyle === "yyyyMMdd") {
-      return compactDate(trimmed);
-    }
-    return trimmed;
-  }
-
-  return trimmed;
-};
-
-const buildTaskParams = (draft: TaskDraft | TaskSetDraft, task: AdminFetchCatalogTask | undefined) => {
-  const params: Record<string, unknown> = {};
-  const fieldSchema = getTaskFieldSchema(task, draft.task_sub_type);
-  Object.entries(draft.task_params).forEach(([key, value]) => {
-    const field = fieldSchema.find((item) => item.name === key);
-    const normalizedKey = normalizeTaskParamFieldName(key);
-    const parsed = serializeFieldValue(field, value, normalizedKey, task);
-    if (parsed !== undefined) {
-      params[normalizedKey] = parsed;
-    }
-  });
-  return params;
-};
-
-const buildTaskSpec = (draft: TaskDraft, task: AdminFetchCatalogTask | undefined): AdminFetchTaskSpec => {
-  const params = buildTaskParams(draft, task);
-  return {
-    task_name: draft.task_name,
-    task_sub_type: Number(draft.task_sub_type || task?.supportedSubTypes?.[0] || 1),
-    task_params: Object.keys(params).length > 0 || task?.acceptsEmptyTaskParams ? params : {},
-  };
-};
-
-const buildTaskSetSpec = (draft: TaskSetDraft, task: AdminFetchCatalogTask | undefined): AdminFetchTaskSetSpec => {
-  const spec: AdminFetchTaskSetSpec = {
-    task_name: draft.task_name,
-    task_sub_type: Number(draft.task_sub_type || task?.supportedSubTypes?.[0] || 1),
-    task_set_mode: draft.task_set_mode,
-    task_params: buildTaskParams(draft, task),
-  };
-
-  if (draft.task_set_mode === "trade_dates" || draft.task_set_mode === "trade_dates_with_offsets") {
-    spec.trade_dates = {
-      start_timestamp: Number(compactDate(draft.trade_dates.start_timestamp)),
-      end_timestamp: Number(compactDate(draft.trade_dates.end_timestamp)),
-    };
-  }
-
-  if (draft.task_set_mode === "date_range_with_offsets") {
-    spec.date_range = {
-      start_date: compactDate(draft.date_range.start_date),
-      end_date: compactDate(draft.date_range.end_date),
-    };
-  }
-
-  if (
-    draft.task_set_mode === "offsets" ||
-    draft.task_set_mode === "trade_dates_with_offsets" ||
-    draft.task_set_mode === "date_range_with_offsets"
-  ) {
-    spec.offset_range = {
-      start: Number(draft.offset_range.start || 0),
-      end: Number(draft.offset_range.end || 0),
-      step: Number(draft.offset_range.step || 0),
-    };
-  }
-
-  return spec;
-};
-
-const buildPayloadFromDrafts = (
-  mode: EditorMode,
-  label: string,
-  tasks: TaskDraft[],
-  taskSets: TaskSetDraft[],
-  fetchInfo: Record<"fund" | "stock" | "index", FetchInfoDraftEntry>,
-  executionOptions: ExecutionOptionsDraft,
-  catalog: AdminFetchCatalogResponse | null,
-  jsonSpec: string
-): AdminFetchJobSpec => {
-  if (mode === "json") {
-    const parsed = JSON.parse(jsonSpec) as AdminFetchJobSpec;
-    parsed.execution_options = {
-      worker_threads: parseNumber(executionOptions.worker_threads),
-      task_interval_ms: parseNumber(executionOptions.task_interval_ms),
-    };
-    return parsed;
-  }
-
-  const payload: AdminFetchJobSpec = {
-    mode,
-  };
-
-  if (label.trim()) {
-    payload.label = label.trim();
-  }
-
-  payload.execution_options = {
-    worker_threads: parseNumber(executionOptions.worker_threads),
-    task_interval_ms: parseNumber(executionOptions.task_interval_ms),
-  };
-
-  if (mode === "tasks" || mode === "all") {
-    payload.tasks = tasks.map((draft) => buildTaskSpec(draft, getTaskCatalog(catalog, draft.task_name)));
-  }
-
-  if (mode === "task_sets" || mode === "all") {
-    payload.task_sets = taskSets.map((draft) =>
-      buildTaskSetSpec(draft, getTaskCatalog(catalog, draft.task_name))
-    );
-  }
-
-  if (mode === "fetch_info" || mode === "all") {
-    payload.fetch_info = {
-      fund: {
-        enabled: fetchInfo.fund.enabled,
-        ...buildParamsRecord(
-          catalog?.fetchInfoCatalog.fund?.paramsSchema,
-          undefined,
-          Object.fromEntries(
-            Object.entries(fetchInfo.fund.params).map(([key, value]) => [key, value.trim()])
-          )
-        ),
-      },
-      stock: {
-        enabled: fetchInfo.stock.enabled,
-        ...buildParamsRecord(
-          catalog?.fetchInfoCatalog.stock?.paramsSchema,
-          undefined,
-          Object.fromEntries(
-            Object.entries(fetchInfo.stock.params).map(([key, value]) => [key, value.trim()])
-          )
-        ),
-      },
-      index: {
-        enabled: fetchInfo.index.enabled,
-        ...buildParamsRecord(
-          catalog?.fetchInfoCatalog.index?.paramsSchema,
-          undefined,
-          Object.fromEntries(
-            Object.entries(fetchInfo.index.params).map(([key, value]) => [key, value.trim()])
-          )
-        ),
-      },
-    };
-
-    (["fund", "stock", "index"] as const).forEach((key) => {
-      const entry = payload.fetch_info?.[key];
-      if (!entry) return;
-      Object.entries(entry).forEach(([paramKey, rawValue]) => {
-        if (paramKey === "enabled" || rawValue === "") return;
-        const field = catalog?.fetchInfoCatalog[key]?.paramsSchema?.find((item) => item.name === paramKey);
-        const parsed = serializeFieldValue(field, String(rawValue), paramKey);
-        if (parsed === undefined) {
-          delete entry[paramKey];
-        } else {
-          entry[paramKey] = parsed;
-        }
-      });
-    });
-  }
-
-  return payload;
-};
-
-const buildTaskPreviewBlock = (draft: TaskDraft, task: AdminFetchCatalogTask | undefined, index: number): TextPreviewBlock => {
-  const spec = buildTaskSpec(draft, task);
-  const params = (spec.task_params ?? {}) as Record<string, unknown>;
-  return {
-    key: draft.id,
-    title: `普通任务 #${index + 1} · ${getTaskKindLabel(draft.task_name)}`,
-    summary: summarizeTaskBehavior(draft.task_name, Number(spec.task_sub_type ?? 1)),
-    requestCount: 1,
-    requestLines: [`请求 1：${describeLeafRequest(draft.task_name, Number(spec.task_sub_type ?? 1), params)}`],
-    parameterLines: [
-      `task_name：${getFieldHelpText("task_name")}`,
-      `task_sub_type：${getFieldHelpText("task_sub_type")}`,
-      ...Object.keys(draft.task_params).map((fieldName) => `${fieldName}：${getFieldHelpText(fieldName)}`),
-    ],
-  };
-};
-
-const buildTaskSetPreviewBlock = (
-  draft: TaskSetDraft,
-  task: AdminFetchCatalogTask | undefined,
-  index: number
-): TextPreviewBlock => {
-  const spec = buildTaskSetSpec(draft, task);
-  const baseParams = { ...((spec.task_params ?? {}) as Record<string, unknown>) };
-  const requestLines: string[] = [];
-
-  if (draft.task_set_mode === "trade_dates") {
-    const dates = enumerateDates(draft.trade_dates.start_timestamp, draft.trade_dates.end_timestamp);
-    dates.forEach((date, dateIndex) => {
-      const leafParams = {
-        ...baseParams,
-        trade_date: task?.dateStyle === "yyyyMMdd" ? formatDateAsCompact(date) : undefined,
-        trade_date_timestamp: task?.dateStyle === "yyyyMMdd" ? undefined : Number(formatDateAsCompact(date)),
-      };
-      requestLines.push(
-        `请求 ${dateIndex + 1}：${describeLeafRequest(draft.task_name, Number(spec.task_sub_type ?? 1), leafParams)}`
-      );
-    });
-  } else if (draft.task_set_mode === "offsets") {
-    const offsets = enumerateOffsets(draft.offset_range.start, draft.offset_range.end, draft.offset_range.step);
-    offsets.forEach((offset, offsetIndex) => {
-      requestLines.push(
-        `请求 ${offsetIndex + 1}：${describeLeafRequest(draft.task_name, Number(spec.task_sub_type ?? 1), {
-          ...baseParams,
-          offset,
-        })}`
-      );
-    });
-  } else if (draft.task_set_mode === "trade_dates_with_offsets") {
-    const dates = enumerateDates(draft.trade_dates.start_timestamp, draft.trade_dates.end_timestamp);
-    const offsets = enumerateOffsets(draft.offset_range.start, draft.offset_range.end, draft.offset_range.step);
-    dates.forEach((date) => {
-      offsets.forEach((offset) => {
-        requestLines.push(
-          `请求 ${requestLines.length + 1}：${describeLeafRequest(draft.task_name, Number(spec.task_sub_type ?? 1), {
-            ...baseParams,
-            trade_date: task?.dateStyle === "yyyyMMdd" ? formatDateAsCompact(date) : undefined,
-            trade_date_timestamp: task?.dateStyle === "yyyyMMdd" ? undefined : Number(formatDateAsCompact(date)),
-            offset,
-          })}`
-        );
-      });
-    });
-  } else if (draft.task_set_mode === "date_range_with_offsets") {
-    const offsets = enumerateOffsets(draft.offset_range.start, draft.offset_range.end, draft.offset_range.step);
-    offsets.forEach((offset, offsetIndex) => {
-      requestLines.push(
-        `请求 ${offsetIndex + 1}：${describeLeafRequest(draft.task_name, Number(spec.task_sub_type ?? 1), {
-          ...baseParams,
-          start_date: compactDate(draft.date_range.start_date),
-          end_date: compactDate(draft.date_range.end_date),
-          offset,
-        })}`
-      );
-    });
-  }
-
-  const visibleLines = requestLines.slice(0, 12);
-  if (requestLines.length > 12) {
-    visibleLines.push(`其余 ${requestLines.length - 12} 个请求已省略，但会按同样模式继续展开。`);
-  }
-  if (visibleLines.length === 0) {
-    visibleLines.push("当前日期范围或 offset 范围还不完整，暂时无法推导出展开后的叶子请求。");
-  }
-
-  const parameterLines = [
-    `task_name：${getFieldHelpText("task_name")}`,
-    `task_sub_type：${getFieldHelpText("task_sub_type")}`,
-    `task_set_mode：${getFieldHelpText("task_set_mode")}`,
-  ];
-
-  if (draft.task_set_mode === "trade_dates" || draft.task_set_mode === "trade_dates_with_offsets") {
-    parameterLines.push(
-      `trade_dates.start_timestamp：${getFieldHelpText("trade_dates_start_timestamp")}`,
-      `trade_dates.end_timestamp：${getFieldHelpText("trade_dates_end_timestamp")}`
-    );
-  }
-  if (draft.task_set_mode === "date_range_with_offsets") {
-    parameterLines.push(
-      `date_range.start_date：${getFieldHelpText("date_range_start_date")}`,
-      `date_range.end_date：${getFieldHelpText("date_range_end_date")}`
-    );
-  }
-  if (
-    draft.task_set_mode === "offsets" ||
-    draft.task_set_mode === "trade_dates_with_offsets" ||
-    draft.task_set_mode === "date_range_with_offsets"
-  ) {
-    parameterLines.push(
-      `offset_range.start：${getFieldHelpText("offset_range_start")}`,
-      `offset_range.end：${getFieldHelpText("offset_range_end")}`,
-      `offset_range.step：${getFieldHelpText("offset_range_step")}`
-    );
-  }
-  parameterLines.push(...Object.keys(draft.task_params).map((fieldName) => `${fieldName}：${getFieldHelpText(fieldName)}`));
-
-  return {
-    key: draft.id,
-    title: `任务集合 #${index + 1} · ${getTaskKindLabel(draft.task_name)}`,
-    summary: `当前会先按“${getTaskSetModeLabel(draft.task_set_mode)}”展开，再把每个叶子请求按 task_sub_type=${spec.task_sub_type} 派发到后端。${summarizeTaskBehavior(
-      draft.task_name,
-      Number(spec.task_sub_type ?? 1)
-    )}`,
-    requestCount: requestLines.length,
-    requestLines: visibleLines,
-    parameterLines,
-  };
-};
-
-const buildFetchInfoPreviewBlocks = (
-  fetchInfoDraft: Record<"fund" | "stock" | "index", FetchInfoDraftEntry>
-): TextPreviewBlock[] =>
-  (["fund", "stock", "index"] as const)
-    .filter((key) => fetchInfoDraft[key].enabled)
-    .map((key) => ({
-      key,
-      title: `基础信息 · ${getTaskKindLabel(`${key}_info`)}`,
-      summary: `会创建一条 ${key}_info 类型的抓取任务，用于拉取 ${key === "fund" ? "基金" : key === "stock" ? "股票" : "指数"}基础信息。`,
-      requestCount: 1,
-      requestLines: [
-        `请求 1：抓取 ${key === "fund" ? "基金" : key === "stock" ? "股票" : "指数"}基础信息，筛选参数为 ${formatJson(fetchInfoDraft[key].params)}。`,
-      ],
-      parameterLines: Object.keys(fetchInfoDraft[key].params).map(
-        (fieldName) => `${fieldName}：${getFieldHelpText(fieldName)}`
-      ),
-    }));
-
-const applyPresetSpec = (
-  preset: AdminFetchQuickPreset,
-  catalog: AdminFetchCatalogResponse | null,
-  setMode: (value: EditorMode) => void,
-  setLabel: (value: string) => void,
-  setTasks: (value: TaskDraft[]) => void,
-  setTaskSets: (value: TaskSetDraft[]) => void,
-  setFetchInfo: (value: Record<"fund" | "stock" | "index", FetchInfoDraftEntry>) => void,
-  setExecutionOptions: (value: ExecutionOptionsDraft) => void,
-  setJsonSpec: (value: string) => void
-) => {
-  if (!preset.spec) {
-    alert("该快捷预设未返回 spec，请联系后端同学补全 fetch-catalog。");
-    return;
-  }
-
-  const spec = preset.spec;
-  setMode(spec.mode);
-  setLabel(spec.label ?? "");
-  setTasks((spec.tasks ?? []).map((item) => createTaskDraft(catalog, item.task_name, item)));
-  setTaskSets((spec.task_sets ?? []).map((item) => createTaskSetDraft(catalog, item.task_name, item)));
-  setFetchInfo(buildFetchInfoDraft(catalog, spec.fetch_info));
-  setExecutionOptions({
-    worker_threads: toInputValue(spec.execution_options?.worker_threads, "worker_threads") || "4",
-    task_interval_ms: toInputValue(spec.execution_options?.task_interval_ms, "task_interval_ms") || "200",
-  });
-  setJsonSpec(JSON.stringify(spec, null, 2));
-};
-
-const getScopeTitle = (scope: string) => {
-  if (scope.startsWith("tasks[")) {
-    const index = Number(scope.match(/^tasks\[(\d+)\]$/)?.[1] ?? 0);
-    return `普通任务 #${index + 1}`;
-  }
-  if (scope.startsWith("task_sets[")) {
-    const index = Number(scope.match(/^task_sets\[(\d+)\]$/)?.[1] ?? 0);
-    return `任务集合 #${index + 1}`;
-  }
-  if (scope.startsWith("fetch_info.")) {
-    const key = scope.split(".")[1];
-    return `基础信息 · ${key === "fund" ? "基金" : key === "stock" ? "股票" : "指数"}`;
-  }
-  if (scope === "execution_options") {
-    return "执行编排设置";
-  }
-  return scope;
-};
-
-const addIssueMessage = (
-  bucket: Map<string, { errors: string[]; warnings: string[] }>,
-  issue: AdminFetchPreviewIssue,
-  kind: "errors" | "warnings"
-) => {
-  const current = bucket.get(issue.path) ?? { errors: [], warnings: [] };
-  current[kind].push(issue.message);
-  bucket.set(issue.path, current);
-};
-
-const getIssueReason = (
-  path: string,
-  issueMap: Map<string, { errors: string[]; warnings: string[] }>,
-  fallback: string
-) => {
-  const issue = issueMap.get(path);
-  if (issue?.errors?.length) return issue.errors[0];
-  if (issue?.warnings?.length) return issue.warnings[0];
-  return fallback;
-};
-
 const DynamicField = ({
   field,
   value,
@@ -1140,6 +400,12 @@ export const FetchTaskManager = ({ token }: FetchTaskManagerProps) => {
     [catalog]
   );
 
+  const taskSetCatalogMap = useMemo(
+    () =>
+      new Map((catalog?.taskSetCatalog ?? []).map((item) => [item.taskName, item])),
+    [catalog]
+  );
+
   const previewBuildResult = useMemo(() => {
     try {
       return {
@@ -1286,8 +552,8 @@ export const FetchTaskManager = ({ token }: FetchTaskManagerProps) => {
           const key = fieldPath.slice("task_params.".length);
           return draft.task_params[`task_params.${key}`]?.trim() || draft.task_params[key]?.trim() || "未填写";
         }
-        if (fieldPath === "trade_dates.start_timestamp") return draft.trade_dates.start_timestamp || "未填写";
-        if (fieldPath === "trade_dates.end_timestamp") return draft.trade_dates.end_timestamp || "未填写";
+        if (fieldPath === "trade_dates.start_timestamp" || fieldPath === "trade_dates.start_date") return draft.trade_dates.start_timestamp || "未填写";
+        if (fieldPath === "trade_dates.end_timestamp" || fieldPath === "trade_dates.end_date") return draft.trade_dates.end_timestamp || "未填写";
         if (fieldPath === "date_range.start_date") return draft.date_range.start_date || "未填写";
         if (fieldPath === "date_range.end_date") return draft.date_range.end_date || "未填写";
         if (fieldPath === "offset_range.start") return draft.offset_range.start || "未填写";
@@ -1336,13 +602,15 @@ export const FetchTaskManager = ({ token }: FetchTaskManagerProps) => {
         const match = path.match(/^task_sets\[(\d+)\]\.(.+)$/);
         if (!match) return path;
         const draft = taskSetDrafts[Number(match[1])];
-        const task = draft ? taskCatalogMap.get(draft.task_name) : undefined;
+        const task = draft
+          ? taskSetCatalogMap.get(draft.task_name) ?? taskCatalogMap.get(draft.task_name)
+          : undefined;
         const fieldPath = match[2];
         if (fieldPath === "task_name") return "任务类型";
         if (fieldPath === "task_sub_type") return "执行分支";
         if (fieldPath === "task_set_mode") return "展开方式";
-        if (fieldPath === "trade_dates.start_timestamp") return "展开开始日期";
-        if (fieldPath === "trade_dates.end_timestamp") return "展开结束日期";
+        if (fieldPath === "trade_dates.start_timestamp" || fieldPath === "trade_dates.start_date") return "展开开始日期";
+        if (fieldPath === "trade_dates.end_timestamp" || fieldPath === "trade_dates.end_date") return "展开结束日期";
         if (fieldPath === "date_range.start_date") return "固定范围开始日期";
         if (fieldPath === "date_range.end_date") return "固定范围结束日期";
         if (fieldPath === "offset_range.start") return "offset 起点";
@@ -1370,7 +638,7 @@ export const FetchTaskManager = ({ token }: FetchTaskManagerProps) => {
 
       return path;
     },
-    [catalog?.fetchInfoCatalog, taskCatalogMap, taskDrafts, taskSetDrafts]
+    [catalog?.fetchInfoCatalog, taskCatalogMap, taskSetCatalogMap, taskDrafts, taskSetDrafts]
   );
 
   const parameterScopeCards = useMemo<ParameterScopeCard[]>(() => {
@@ -1433,7 +701,8 @@ export const FetchTaskManager = ({ token }: FetchTaskManagerProps) => {
             path,
             taskDrafts,
             taskSetDrafts,
-            taskCatalogMap
+            taskCatalogMap,
+            taskSetCatalogMap
           );
           upsertItem(card, {
             path: normalizedPath,
@@ -1498,6 +767,7 @@ export const FetchTaskManager = ({ token }: FetchTaskManagerProps) => {
     previewIssueMap,
     previewResult?.parameterAnalysis,
     taskCatalogMap,
+    taskSetCatalogMap,
     taskDrafts,
     taskSetDrafts,
   ]);
@@ -1741,37 +1011,54 @@ export const FetchTaskManager = ({ token }: FetchTaskManagerProps) => {
   };
 
   const handleTaskSetDraftChange = (draftId: string, taskName: string) => {
-    const catalogTask = taskCatalogMap.get(taskName);
+    const taskSetCatalogTask = catalog?.taskSetCatalog
+      ? getTaskSetCatalog(catalog, taskName)
+      : taskCatalogMap.get(taskName);
+    const defaultSubType = getSupportedTaskSetSubTypes(taskSetCatalogTask)[0] ?? 1;
+    const variant = getTaskSetVariant(taskSetCatalogTask, defaultSubType);
     setTaskSetDrafts((current) =>
       current.map((item) =>
         item.id === draftId
           ? {
               ...item,
               task_name: taskName,
-              task_sub_type: String(getSupportedSubTypes(catalogTask)[0] ?? 1),
+              task_sub_type: String(defaultSubType),
               task_params: buildParamsRecord(
-                getTaskFieldSchema(catalogTask, getSupportedSubTypes(catalogTask)[0] ?? 1),
-                catalogTask?.defaultParams
+                getTaskFieldSchema(taskSetCatalogTask, defaultSubType),
+                taskSetCatalogTask?.defaultParams
               ),
-              task_set_mode: getAllowedTaskSetModes(catalogTask, getSupportedSubTypes(catalogTask)[0] ?? 1)[0] ?? item.task_set_mode,
+              task_set_mode:
+                (variant?.allowedTaskSetModes?.[0] as AdminFetchTaskSetMode) ??
+                getAllowedTaskSetModes(taskSetCatalogTask, defaultSubType)[0] ??
+                item.task_set_mode,
             }
           : item
       )
     );
   };
 
-  const handleTaskSetModeChange = (draftId: string, taskSetMode: AdminFetchTaskSetMode) => {
+  const handleTaskSetSubTypeChange = (draftId: string, taskSetSubType: string) => {
     setTaskSetDrafts((current) =>
-      current.map((item) =>
-        item.id === draftId
-          ? {
-              ...item,
-              task_set_mode: taskSetMode,
-              task_sub_type:
-                taskSetMode === "date_range_with_offsets" ? "3" : item.task_sub_type,
-            }
-          : item
-      )
+      current.map((item) => {
+        if (item.id !== draftId) return item;
+        const taskSetCatalogTask = catalog?.taskSetCatalog
+          ? getTaskSetCatalog(catalog, item.task_name)
+          : taskCatalogMap.get(item.task_name);
+        const variant = getTaskSetVariant(taskSetCatalogTask, taskSetSubType);
+        return {
+          ...item,
+          task_sub_type: taskSetSubType,
+          task_params: buildParamsRecord(
+            getTaskFieldSchema(taskSetCatalogTask, taskSetSubType),
+            taskSetCatalogTask?.defaultParams,
+            item.task_params
+          ),
+          task_set_mode:
+            (variant?.allowedTaskSetModes?.[0] as AdminFetchTaskSetMode) ??
+            getAllowedTaskSetModes(taskSetCatalogTask, Number(taskSetSubType))[0] ??
+            item.task_set_mode,
+        };
+      })
     );
   };
 
@@ -2287,9 +1574,11 @@ export const FetchTaskManager = ({ token }: FetchTaskManagerProps) => {
 
                     <div className="mt-4 space-y-4">
                       {taskSetDrafts.map((draft, index) => {
-                        const catalogTask = taskCatalogMap.get(draft.task_name);
-                        const availableModes = getAllowedTaskSetModes(catalogTask, draft.task_sub_type);
-                        const visibleFields = getTaskFieldSchema(catalogTask, draft.task_sub_type).filter(
+                        const taskSetCatalogTask = catalog?.taskSetCatalog
+                          ? getTaskSetCatalog(catalog, draft.task_name)
+                          : taskCatalogMap.get(draft.task_name);
+                        const taskSetVariant = getTaskSetVariant(taskSetCatalogTask, draft.task_sub_type);
+                        const visibleFields = getTaskFieldSchema(taskSetCatalogTask, draft.task_sub_type).filter(
                           (field) => {
                             const normalizedName = normalizeTaskParamFieldName(field.name);
                             if (TASK_SET_STRUCTURAL_PARAM_KEYS.has(normalizedName)) {
@@ -2298,6 +1587,12 @@ export const FetchTaskManager = ({ token }: FetchTaskManagerProps) => {
                             return true;
                           }
                         );
+                        const taskNameOptions = [
+                          ...(catalog?.taskCatalog ?? []),
+                          ...(catalog?.taskSetCatalog ?? []).filter(
+                            (tc) => !(catalog?.taskCatalog ?? []).some((c) => c.taskName === tc.taskName)
+                          ),
+                        ];
 
                         return (
                           <div key={draft.id} className="rounded-2xl border border-white bg-white p-4 shadow-sm">
@@ -2326,7 +1621,7 @@ export const FetchTaskManager = ({ token }: FetchTaskManagerProps) => {
                                   onChange={(event) => handleTaskSetDraftChange(draft.id, event.target.value)}
                                   className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-ink-900 focus:border-sky-500 focus:outline-none"
                                 >
-                                  {(catalog?.taskCatalog ?? []).map((item) => (
+                                  {taskNameOptions.map((item) => (
                                     <option key={item.taskName} value={item.taskName}>
                                       {item.label}
                                     </option>
@@ -2336,50 +1631,35 @@ export const FetchTaskManager = ({ token }: FetchTaskManagerProps) => {
                               </label>
 
                               <label className="block">
-                                <span className="mb-2 block text-xs font-medium text-ink-600">task_set_mode</span>
-                                <select
-                                  value={draft.task_set_mode}
-                                  onChange={(event) =>
-                                    handleTaskSetModeChange(draft.id, event.target.value as AdminFetchTaskSetMode)
-                                  }
-                                  className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-ink-900 focus:border-sky-500 focus:outline-none"
-                                >
-                                  {availableModes.map((mode) => (
-                                    <option key={mode} value={mode}>
-                                      {TASK_SET_MODE_OPTIONS.find((item) => item.value === mode)?.label ?? mode}
-                                    </option>
-                                  ))}
-                                </select>
-                                {renderFieldMeta(`task_sets[${index}].task_set_mode`, getFieldHelpText("task_set_mode"))}
-                              </label>
-
-                              <label className="block">
-                                <span className="mb-2 block text-xs font-medium text-ink-600">task_sub_type</span>
+                                <span className="mb-2 block text-xs font-medium text-ink-600">task_set_sub_type</span>
                                 <select
                                   value={draft.task_sub_type}
-                                  onChange={(event) =>
-                                    setTaskSetDrafts((current) =>
-                                      current.map((item) =>
-                                        item.id === draft.id ? { ...item, task_sub_type: event.target.value } : item
-                                      )
-                                    )
-                                  }
+                                  onChange={(event) => handleTaskSetSubTypeChange(draft.id, event.target.value)}
                                   className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-ink-900 focus:border-sky-500 focus:outline-none"
                                 >
-                                  {getSupportedSubTypes(catalogTask).map((subType) => (
+                                  {getSupportedTaskSetSubTypes(taskSetCatalogTask).map((subType) => (
                                     <option key={subType} value={subType}>
-                                      {getTaskVariant(catalogTask, subType)?.label
-                                        ? `${subType} · ${getTaskVariant(catalogTask, subType)?.label}`
+                                      {getTaskSetVariant(taskSetCatalogTask, subType)?.label
+                                        ? `${subType} · ${getTaskSetVariant(taskSetCatalogTask, subType)?.label}`
                                         : subType}
                                     </option>
                                   ))}
                                 </select>
                                 {renderFieldMeta(`task_sets[${index}].task_sub_type`, getFieldHelpText("task_sub_type"))}
                               </label>
+
+                              <label className="block">
+                                <span className="mb-2 block text-xs font-medium text-ink-600">task_set_mode</span>
+                                <div className="w-full rounded-xl border border-gray-200 bg-slate-50 px-3 py-2 text-sm text-ink-700">
+                                  {TASK_SET_MODE_OPTIONS.find((item) => item.value === draft.task_set_mode)?.label ?? draft.task_set_mode}
+                                </div>
+                                {renderFieldMeta(`task_sets[${index}].task_set_mode`, getFieldHelpText("task_set_mode"))}
+                              </label>
                             </div>
 
                             {(draft.task_set_mode === "trade_dates" ||
-                              draft.task_set_mode === "trade_dates_with_offsets") && (
+                              draft.task_set_mode === "trade_dates_with_offsets" ||
+                              draft.task_set_mode === "trade_dates_with_index_batches") && (
                               <div className="mt-4 grid gap-3 md:grid-cols-2">
                                 <label className="block">
                                   <span className="mb-2 block text-xs font-medium text-ink-600">trade_dates.start_timestamp</span>
@@ -2432,7 +1712,8 @@ export const FetchTaskManager = ({ token }: FetchTaskManagerProps) => {
                               </div>
                             )}
 
-                            {draft.task_set_mode === "date_range_with_offsets" && (
+                            {(draft.task_set_mode === "date_range_with_offsets" ||
+                              draft.task_set_mode === "date_range_with_index_batches") && (
                               <div className="mt-4 grid gap-3 md:grid-cols-2">
                                 <label className="block">
                                   <span className="mb-2 block text-xs font-medium text-ink-600">date_range.start_date</span>
