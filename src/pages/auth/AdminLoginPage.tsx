@@ -25,7 +25,7 @@ const AdminLoginPage = () => {
   }, []);
 
   if (isLoggedIn) {
-    return <Navigate to="/app/admin" replace />;
+    return <Navigate to="/app/admin/overview" replace />;
   }
 
   const handleSubmit = async (event: FormEvent) => {
@@ -61,7 +61,7 @@ const AdminLoginPage = () => {
         tokenExpiresAt: getTokenExpiryIso(token),
       });
 
-      window.location.href = '/app/admin';
+      window.location.href = '/app/admin/overview';
     } catch (err: any) {
       setError(err.message || '管理员登录失败');
     } finally {

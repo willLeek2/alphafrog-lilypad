@@ -9,7 +9,9 @@ export interface AgentRunEvent {
   runId: string;
   seq: number;
   eventType: string;
-  payloadJson: string;
+  /** HTTP API returns parsed object (v1); legacy field name kept for callers that still send JSON string */
+  payload?: Record<string, unknown>;
+  payloadJson?: string;
   createdAt: string;
 }
 
@@ -89,10 +91,11 @@ export interface AgentRunResponse {
   status: string;
   currentStep: number;
   maxSteps: number;
+  /** SSE v1 — relative path e.g. /api/agent/runs/{id}/stream */
+  streamUrl?: string;
 }
 
-// Start a new agent run
-export async function startAgentRun(params: { 
+export type CreateAgentRunParams = {
   message: string;
   config?: {
     model?: string;
@@ -101,8 +104,17 @@ export async function startAgentRun(params: {
     retrievalSources?: string[];
     codeIntensity?: number;
     useWebSearch?: boolean;
-  }
-}): Promise<string> {
+  };
+};
+
+// Start a new agent run
+export async function startAgentRun(params: CreateAgentRunParams): Promise<string> {
+  const created = await createAgentRunWithStream(params);
+  return created.id;
+}
+
+/** Create run and return full response including streamUrl for SSE v1. */
+export async function createAgentRunWithStream(params: CreateAgentRunParams): Promise<AgentRunResponse> {
   // Transform config to match backend API format
   const requestBody: Record<string, unknown> = {
     message: params.message,
@@ -116,11 +128,10 @@ export async function startAgentRun(params: {
     }
   }
   
-  const response = await apiCall<AgentRunResponse>('/api/agent/runs', {
+  return apiCall<AgentRunResponse>('/api/agent/runs', {
     method: 'POST',
     body: JSON.stringify(requestBody),
   });
-  return response.id;
 }
 
 export interface AgentRun {
@@ -196,8 +207,32 @@ export async function getRunStatus(runId: string): Promise<AgentRunStatus> {
 }
 
 // Get run result
-export async function getRunResult(runId: string): Promise<unknown> {
-  return apiCall<unknown>(`/api/agent/runs/${runId}/result`);
+export async function getRunResult(runId: string): Promise<AgentRunResult> {
+  return apiCall<AgentRunResult>(`/api/agent/runs/${runId}/result`);
+}
+
+/**
+ * Top-level run result DTO returned by GET /api/agent/runs/{runId}/result.
+ * Most fields are only meaningful when {@link status} === 'PARTIAL' — backend
+ * writes null for all four below on any other terminal status.
+ */
+export interface AgentRunResult {
+  /** Best-effort answer text (may be present even when partial). */
+  answer?: string | null;
+  /** True iff the run ended in PARTIAL via DAG recovery judge. */
+  partial?: boolean;
+  /** Todo ids the judge decided to skip (PARTIAL only). */
+  skippedTodoIds?: string[] | null;
+  /**
+   * Judge decision id (UUID, NOT a real LLM traceId). Backend renamed the field
+   * from `recoveryJudgeTraceId` → `recoveryJudgeDecisionId` to stop users from
+   * treating it as an LLM trace. Admin-only surface in UI (PARTIAL only).
+   */
+  recoveryJudgeDecisionId?: string | null;
+  /** API-capped to 500 chars; PARTIAL only. */
+  recoveryRationale?: string | null;
+  /** Final run status echoed from backend; PARTIAL-aware clients may show this. */
+  status?: string | null;
 }
 
 export interface TraceSpanItem {
@@ -268,6 +303,81 @@ export async function getRunTraces(runId: string): Promise<TraceListResponse> {
 
 export async function getTraceDetail(runId: string, traceId: string): Promise<TraceDetail> {
   return apiCall<TraceDetail>(`/api/agent/runs/${runId}/traces/${traceId}`);
+}
+
+/** Backend Step 1 safe detail DTO (AgentCallDetailResponse). */
+export interface AgentCallDetailResponse {
+  type?: 'llm' | 'tool' | string;
+  detailKind?: 'available' | 'truncated' | 'unavailable' | 'expired' | string;
+  source?: string;
+  id?: string;
+  runId?: string;
+  todoId?: string | null;
+  todoSequence?: number | null;
+  phase?: string;
+  stage?: string;
+  time?: string;
+  durationMs?: number | null;
+  status?: string;
+  summary?: string;
+  metrics?: {
+    inputTokens?: number | null;
+    outputTokens?: number | null;
+    totalTokens?: number | null;
+    actualCost?: number | null;
+  } | null;
+  llm?: {
+    model?: string;
+    /** 可选 thinking 内容：仅在调用方传 includeThinking=true 且为 admin 时回传。 */
+    reasoningContent?: string;
+  } | null;
+  tool?: {
+    name?: string;
+    paramsSummary?: string;
+    outputPreview?: string;
+  } | null;
+  limits?: {
+    previewMaxChars?: number;
+    truncated?: boolean;
+  } | null;
+  /**
+   * 仅在调用方传了 includeThinking=true 但 blob 缺/无 reasoningText 时为 true。
+   * detailKind 仍为 available，仅 thinking 不可用。
+   */
+  reasoningUnavailable?: boolean;
+}
+
+/** Normalized safe view for UI (post map + sanitize). */
+export interface SafeCallDetailResponse {
+  type: 'llm' | 'tool' | string;
+  callDetailKind: 'available' | 'truncated' | 'unavailable' | 'expired' | string;
+  source?: string;
+  summary?: string;
+  structured?: Record<string, string | number | boolean> | null;
+  expired?: boolean;
+  unavailable?: boolean;
+  message?: string;
+}
+
+export async function getLlmCallDetail(
+  runId: string,
+  llmCallId: string,
+  options?: { includeThinking?: boolean }
+): Promise<AgentCallDetailResponse> {
+  const includeThinking = options?.includeThinking === true;
+  const qs = includeThinking ? '?includeThinking=true' : '';
+  return apiCall<AgentCallDetailResponse>(
+    `/api/agent/runs/${runId}/llm-calls/${encodeURIComponent(llmCallId)}/detail${qs}`
+  );
+}
+
+export async function getToolCallDetail(
+  runId: string,
+  toolCallId: string
+): Promise<AgentCallDetailResponse> {
+  return apiCall<AgentCallDetailResponse>(
+    `/api/agent/runs/${runId}/tool-calls/${encodeURIComponent(toolCallId)}/detail`
+  );
 }
 
 // Cancel run

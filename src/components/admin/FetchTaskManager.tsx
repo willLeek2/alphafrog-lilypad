@@ -5,6 +5,7 @@ import {
   deleteFetchJob,
   getFetchCatalog,
   getFetchJobDetail,
+  getFetchJobStatusSummary,
   getFetchTaskDetail,
   listFetchJobs,
   listFetchTasksV2,
@@ -42,7 +43,9 @@ import {
   Blocks,
   Braces,
   Calendar,
+  ChevronDown,
   ChevronRight,
+  ChevronUp,
   Database,
   Eye,
   Filter,
@@ -89,9 +92,12 @@ import {
   PARAMETER_STATUS_META,
 } from "./FetchTaskManager/constants";
 
+const isCancelableJob = (status: string) => status === "PENDING" || status === "RUNNING";
+
 import {
   // 工具函数（已从主文件拆分出去）
   // formatters
+  decodeDebugRequests,
   formatDateTime,
   formatJson,
   toInputValue,
@@ -113,6 +119,7 @@ import {
   getSupportedSubTypes,
   getSupportedTaskSetSubTypes,
   getAllowedTaskSetModes,
+  evaluateCondition,
   // taskBehavior
   summarizeTaskBehavior,
   describeLeafRequest,
@@ -368,6 +375,7 @@ export const FetchTaskManager = ({ token }: FetchTaskManagerProps) => {
   const [selectedTask, setSelectedTask] = useState<AdminFetchTaskDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
+  const [debugExpandedIndexes, setDebugExpandedIndexes] = useState<Set<number>>(new Set());
 
   const [editorMode, setEditorMode] = useState<EditorMode>("tasks");
   const [jobLabel, setJobLabel] = useState("");
@@ -452,11 +460,12 @@ export const FetchTaskManager = ({ token }: FetchTaskManagerProps) => {
     }
 
     taskSetDrafts.forEach((draft, index) => {
-      if (
-        draft.task_set_mode === "offsets" ||
-        draft.task_set_mode === "trade_dates_with_offsets" ||
-        draft.task_set_mode === "date_range_with_offsets"
-      ) {
+      const taskSetCatalogTask = catalog?.taskSetCatalog
+        ? getTaskSetCatalog(catalog, draft.task_name)
+        : taskCatalogMap.get(draft.task_name);
+      const taskSetVariantFields = getTaskFieldSchema(taskSetCatalogTask, draft.task_sub_type);
+      const hasOffsetRange = taskSetVariantFields.some((f) => f.name.startsWith("offset_range."));
+      if (hasOffsetRange) {
         const rawStep = draft.offset_range.step.trim();
         if (!rawStep) {
           return;
@@ -473,7 +482,7 @@ export const FetchTaskManager = ({ token }: FetchTaskManagerProps) => {
     });
 
     return issues;
-  }, [executionOptions, taskSetDrafts]);
+  }, [executionOptions, taskSetDrafts, catalog, taskCatalogMap]);
 
   const previewPayloadJson = useMemo(
     () => (previewBuildResult.payload ? JSON.stringify(previewBuildResult.payload) : ""),
@@ -905,6 +914,61 @@ export const FetchTaskManager = ({ token }: FetchTaskManagerProps) => {
     );
   }, [tasks]);
 
+  useEffect(() => {
+    if (!showDetailModal) {
+      setDebugExpandedIndexes(new Set());
+    }
+  }, [showDetailModal]);
+
+  useEffect(() => {
+    if (!selectedJobUuid || !selectedJobDetail) return;
+    if (!isCancelableJob(selectedJobDetail.status)) return;
+
+    const POLL_INTERVAL_MS = 8000;
+
+    const poll = async () => {
+      try {
+        const summary = await getFetchJobStatusSummary(token, selectedJobUuid);
+        setSelectedJobDetail((prev) =>
+          prev
+            ? {
+                ...prev,
+                status: summary.status,
+                expandedTaskCount: summary.expandedTaskCount,
+                pendingCount: summary.pendingCount,
+                runningCount: summary.runningCount,
+                successCount: summary.successCount,
+                failureCount: summary.failureCount,
+              }
+            : prev
+        );
+        setJobs((prev) =>
+          prev.map((job) =>
+            job.jobUuid === summary.jobUuid
+              ? {
+                  ...job,
+                  status: summary.status,
+                  expandedTaskCount: summary.expandedTaskCount,
+                  pendingCount: summary.pendingCount,
+                  runningCount: summary.runningCount,
+                  successCount: summary.successCount,
+                  failureCount: summary.failureCount,
+                }
+              : job
+          )
+        );
+        if (!isCancelableJob(summary.status)) {
+          setTasksReloadKey((k) => k + 1);
+        }
+      } catch {
+        // 静默忽略轮询失败，避免干扰用户
+      }
+    };
+
+    const timer = setInterval(poll, POLL_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [token, selectedJobUuid, selectedJobDetail?.status]);
+
   const jobsTotalPages = Math.max(1, Math.ceil(jobsTotal / jobsPageSize));
   const tasksTotalPages = Math.max(1, Math.ceil(tasksTotal / tasksPageSize));
 
@@ -1162,7 +1226,7 @@ export const FetchTaskManager = ({ token }: FetchTaskManagerProps) => {
     }
   };
 
-  const isCancelableJob = (status: string) => status === "PENDING" || status === "RUNNING";
+
 
   const handleCancelJob = async (job: AdminFetchJob | AdminFetchJobDetail) => {
     if (!isCancelableJob(job.status)) {
@@ -1578,15 +1642,18 @@ export const FetchTaskManager = ({ token }: FetchTaskManagerProps) => {
                           ? getTaskSetCatalog(catalog, draft.task_name)
                           : taskCatalogMap.get(draft.task_name);
                         const taskSetVariant = getTaskSetVariant(taskSetCatalogTask, draft.task_sub_type);
-                        const visibleFields = getTaskFieldSchema(taskSetCatalogTask, draft.task_sub_type).filter(
-                          (field) => {
-                            const normalizedName = normalizeTaskParamFieldName(field.name);
-                            if (TASK_SET_STRUCTURAL_PARAM_KEYS.has(normalizedName)) {
-                              return false;
-                            }
-                            return true;
+                        const taskSetVariantFields = getTaskFieldSchema(taskSetCatalogTask, draft.task_sub_type);
+                        const visibleFields = taskSetVariantFields.filter((field) => {
+                          const normalizedName = normalizeTaskParamFieldName(field.name);
+                          if (TASK_SET_STRUCTURAL_PARAM_KEYS.has(normalizedName)) {
+                            return false;
                           }
-                        );
+                          return evaluateCondition(field.effectiveWhen, { task_set_mode: draft.task_set_mode });
+                        });
+
+                        const hasTradeDates = taskSetVariantFields.some((f) => f.name.startsWith("trade_dates."));
+                        const hasDateRange = taskSetVariantFields.some((f) => f.name.startsWith("date_range."));
+                        const hasOffsetRange = taskSetVariantFields.some((f) => f.name.startsWith("offset_range."));
                         const taskNameOptions = [
                           ...(catalog?.taskCatalog ?? []),
                           ...(catalog?.taskSetCatalog ?? []).filter(
@@ -1657,9 +1724,7 @@ export const FetchTaskManager = ({ token }: FetchTaskManagerProps) => {
                               </label>
                             </div>
 
-                            {(draft.task_set_mode === "trade_dates" ||
-                              draft.task_set_mode === "trade_dates_with_offsets" ||
-                              draft.task_set_mode === "trade_dates_with_index_batches") && (
+                            {hasTradeDates && (
                               <div className="mt-4 grid gap-3 md:grid-cols-2">
                                 <label className="block">
                                   <span className="mb-2 block text-xs font-medium text-ink-600">trade_dates.start_timestamp</span>
@@ -1712,8 +1777,7 @@ export const FetchTaskManager = ({ token }: FetchTaskManagerProps) => {
                               </div>
                             )}
 
-                            {(draft.task_set_mode === "date_range_with_offsets" ||
-                              draft.task_set_mode === "date_range_with_index_batches") && (
+                            {hasDateRange && (
                               <div className="mt-4 grid gap-3 md:grid-cols-2">
                                 <label className="block">
                                   <span className="mb-2 block text-xs font-medium text-ink-600">date_range.start_date</span>
@@ -1766,9 +1830,7 @@ export const FetchTaskManager = ({ token }: FetchTaskManagerProps) => {
                               </div>
                             )}
 
-                            {(draft.task_set_mode === "offsets" ||
-                              draft.task_set_mode === "trade_dates_with_offsets" ||
-                              draft.task_set_mode === "date_range_with_offsets") && (
+                            {hasOffsetRange && (
                               <div className="mt-4 grid gap-3 md:grid-cols-3">
                                 <label className="block">
                                   <span className="mb-2 block text-xs font-medium text-ink-600">offset_range.start</span>
@@ -2768,6 +2830,66 @@ export const FetchTaskManager = ({ token }: FetchTaskManagerProps) => {
                       </div>
                     </div>
                   </div>
+
+                  {selectedTask.debugRequestsBase64
+                    ? (() => {
+                        const requests = decodeDebugRequests(selectedTask.debugRequestsBase64);
+                        if (!requests || requests.length === 0) return null;
+                        return (
+                          <div className="rounded-2xl border border-amber-100 bg-amber-50/40 p-4">
+                            <h4 className="text-sm font-semibold text-amber-900">Debug 请求记录</h4>
+                            <p className="mt-1 text-xs text-amber-700">
+                              该任务失败时向 TuShare 发送的 HTTP 请求记录（{requests.length} 条）
+                            </p>
+                            <div className="mt-3 max-h-64 overflow-auto rounded-xl border border-white bg-white p-2 shadow-sm space-y-1">
+                              {requests.map((req, idx) => {
+                                const expanded = debugExpandedIndexes.has(idx);
+                                let apiName: string | null = null;
+                                try {
+                                  const parsed = JSON.parse(req);
+                                  apiName = parsed?.api_name ?? null;
+                                } catch {
+                                  apiName = null;
+                                }
+                                return (
+                                  <div key={idx} className="rounded-lg border border-amber-100 bg-amber-50/30 overflow-hidden">
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setDebugExpandedIndexes((prev) => {
+                                          const next = new Set(prev);
+                                          if (next.has(idx)) next.delete(idx);
+                                          else next.add(idx);
+                                          return next;
+                                        })
+                                      }
+                                      className="flex w-full items-center justify-between px-3 py-2 text-left text-xs font-medium text-amber-900 hover:bg-amber-100/40"
+                                    >
+                                      <span className="flex items-center gap-2">
+                                        <span>请求 #{idx + 1}</span>
+                                        {apiName ? (
+                                          <span className="rounded bg-amber-200 px-1.5 py-0.5 text-[10px] text-amber-800">
+                                            {apiName}
+                                          </span>
+                                        ) : null}
+                                      </span>
+                                      {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                                    </button>
+                                    {expanded ? (
+                                      <div className="border-t border-amber-100 bg-white px-3 py-2">
+                                        <pre className="whitespace-pre-wrap break-all text-[11px] leading-5 text-ink-700">
+                                          {formatJson(req)}
+                                        </pre>
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })()
+                    : null}
                 </div>
               )}
             </div>

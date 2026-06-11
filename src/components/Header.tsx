@@ -79,7 +79,7 @@ const Header = ({
               type="button"
               onClick={onAdminNavigate}
               className={
-                location.pathname === '/admin'
+                location.pathname.startsWith('/app/admin')
                   ? "text-amber-700"
                   : "transition hover:text-amber-700"
               }

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useParams, useNavigate } from "react-router-dom";
 import type { AdminUser } from "../types/admin";
 import { adminDelete, adminLogout } from "../api/admin";
 import ActionButton from "../components/ActionButton";
@@ -18,8 +19,12 @@ type AdminDashboardProps = {
 
 type Tab = "overview" | "users" | "credits" | "crawl" | "monitor" | "config" | "settings";
 
+const VALID_TABS: Tab[] = ["overview", "users", "credits", "crawl", "monitor", "config", "settings"];
+
 const AdminDashboard = ({ admin, onAdminLogout, onAdminDeleted }: AdminDashboardProps) => {
-  const [activeTab, setActiveTab] = useState<Tab>("overview");
+  const { tab } = useParams<{ tab?: string }>();
+  const navigate = useNavigate();
+  const activeTab: Tab = VALID_TABS.includes(tab as Tab) ? (tab as Tab) : "overview";
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [magicPassword, setMagicPassword] = useState("");
@@ -90,7 +95,7 @@ const AdminDashboard = ({ admin, onAdminLogout, onAdminDeleted }: AdminDashboard
           return (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id as Tab)}
+              onClick={() => navigate(`/app/admin/${tab.id}`)}
               className={`group flex items-center gap-2 border-b-2 py-4 px-1 text-sm font-medium transition-colors whitespace-nowrap ${
                 isActive
                   ? "border-amber-500 text-amber-600"

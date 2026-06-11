@@ -9,6 +9,7 @@ interface UserLayoutProps {
 const UserLayout: React.FC<UserLayoutProps> = ({ children }) => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const location = useLocation();
+  const isAgentV2Chat = location.pathname.startsWith('/app/chat/v2');
 
   const navItems = [
     { icon: LayoutDashboard, label: '概览仪表盘', path: '/app/dashboard', disabled: false },
@@ -82,8 +83,14 @@ const UserLayout: React.FC<UserLayoutProps> = ({ children }) => {
           </h2>
         </header>
 
-        {/* Content Area */}
-        <div className="flex-1 overflow-auto p-6">
+        {/* Content Area — Agent V2 fills viewport height with internal scroll */}
+        <div
+          className={
+            isAgentV2Chat
+              ? 'flex min-h-0 flex-1 flex-col overflow-hidden'
+              : 'flex-1 overflow-auto p-6'
+          }
+        >
           {children}
         </div>
       </main>

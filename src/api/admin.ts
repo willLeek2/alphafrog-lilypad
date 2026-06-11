@@ -15,6 +15,7 @@ import type {
   AdminFetchJobPreviewResponse,
   AdminFetchJobSpec,
   AdminFetchJobSummary,
+  AdminFetchJobStatusSummary,
 } from "../types/admin";
 
 export type AdminLoginPayload = {
@@ -327,6 +328,9 @@ export const listFetchJobs = async (token: string, filters: ListFetchJobsFilters
 
 export const getFetchJobDetail = async (token: string, jobUuid: string) =>
   apiFetch<AdminFetchJobDetail>(`/admin/fetch-jobs/${jobUuid}`, { token });
+
+export const getFetchJobStatusSummary = async (token: string, jobUuid: string) =>
+  apiFetch<AdminFetchJobStatusSummary>(`/admin/fetch-jobs/${jobUuid}/status-summary`, { token });
 
 export const cancelFetchJob = async (token: string, jobUuid: string) =>
   apiFetch(`/admin/fetch-jobs/${jobUuid}:cancel`, {

@@ -6,13 +6,14 @@ import type { AdminUser } from '../types/admin';
 
 // Lazy load components
 const LandingPage = lazy(() => import('../pages/LandingPage'));
+const LegacyDemoLanding = lazy(() => import('../pages/legacy/DemoLanding'));
 const ProfilePage = lazy(() => import('../pages/ProfilePage'));
 const AdminDashboard = lazy(() => import('../pages/AdminDashboard'));
 const AgentRunDetailPage = lazy(() => import('../pages/agent/AgentRunDetailPage'));
-const DemoLanding = lazy(() => import('../pages/demo/DemoLanding'));
 const DemoDashboard = lazy(() => import('../pages/demo/DemoDashboard'));
 const DemoChat = lazy(() => import('../pages/demo/DemoChat'));
 const DemoSettings = lazy(() => import('../pages/demo/DemoSettings'));
+const AgentFrontendStatusPage = lazy(() => import('../pages/test/AgentFrontendStatusPage'));
 
 // Auth Pages
 const LoginPage = lazy(() => import('../pages/auth/LoginPage'));
@@ -22,6 +23,7 @@ const AdminLoginPage = lazy(() => import('../pages/auth/AdminLoginPage'));
 const AdminRegisterPage = lazy(() => import('../pages/auth/AdminRegisterPage'));
 const SettingsPage = lazy(() => import('../pages/SettingsPage'));
 const UserChat = lazy(() => import('../pages/agent/UserChat'));
+const AgentV2Page = lazy(() => import('../agent-v2/pages/AgentV2Page'));
 const UserDashboard = lazy(() => import('../pages/agent/UserDashboard'));
 
 // Legacy redirect component
@@ -57,13 +59,20 @@ export const createAppRouter = (
   // Landing page
   {
     path: '/',
-    element: withSuspense(DemoLanding),
+    element: withSuspense(LandingPage),
+  },
+  {
+    path: '/legacy/demo-landing',
+    element: withSuspense(LegacyDemoLanding),
   },
   {
     path: '/settings',
     element: withSuspense(DemoSettings),
   },
-  
+  {
+    path: '/brief',
+    element: withSuspense(AgentFrontendStatusPage),
+  },
   // Auth Routes
   {
     path: '/login',
@@ -116,11 +125,20 @@ export const createAppRouter = (
       },
       {
         path: 'admin',
-        element: admin ? withSuspense(AdminDashboard, { 
-          admin, 
-          onAdminLogout, 
-          onAdminDeleted: onAdminLogout 
-        }) : <Navigate to="/admin/login" replace />,
+        children: [
+          {
+            index: true,
+            element: <Navigate to="/app/admin/overview" replace />,
+          },
+          {
+            path: ':tab',
+            element: admin ? withSuspense(AdminDashboard, {
+              admin,
+              onAdminLogout,
+              onAdminDeleted: onAdminLogout
+            }) : <Navigate to="/admin/login" replace />,
+          },
+        ],
       },
       {
         path: 'dashboard',
@@ -132,6 +150,19 @@ export const createAppRouter = (
           {
             index: true,
             element: user ? withSuspense(UserChat) : <Navigate to="/login" replace />,
+          },
+          {
+            path: 'v2',
+            children: [
+              {
+                index: true,
+                element: user ? withSuspense(AgentV2Page) : <Navigate to="/login" replace />,
+              },
+              {
+                path: ':runId',
+                element: user ? withSuspense(AgentV2Page) : <Navigate to="/login" replace />,
+              },
+            ],
           },
           {
             path: ':runId',

@@ -1,4 +1,4 @@
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
 
@@ -23,9 +23,24 @@ const AppLayout = ({
   onAdminNavigate,
   onAdminLogin,
 }: AppLayoutProps) => {
+  const location = useLocation();
+  const isAgentV2Chat = location.pathname.startsWith('/app/chat/v2');
+
   return (
-    <div className="min-h-screen bg-atmos bg-grid animate-shimmer">
-      <div className="min-h-screen bg-white/70 flex flex-col">
+    <div
+      className={
+        isAgentV2Chat
+          ? 'flex h-screen flex-col overflow-hidden bg-slate-50'
+          : 'min-h-screen bg-atmos bg-grid animate-shimmer'
+      }
+    >
+      <div
+        className={
+          isAgentV2Chat
+            ? 'flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-white'
+            : 'flex min-h-screen flex-col bg-white/70'
+        }
+      >
         <Header
           isAuthed={Boolean(user)}
           userName={user?.username}
@@ -36,13 +51,21 @@ const AppLayout = ({
           onRegister={onRegister}
           onLogout={onLogout}
         />
-        <main className="flex-1 flex flex-col overflow-y-auto overflow-x-hidden">
+        <main
+          className={
+            isAgentV2Chat
+              ? 'flex min-h-0 flex-1 flex-col overflow-hidden'
+              : 'flex flex-1 flex-col overflow-x-hidden overflow-y-auto'
+          }
+        >
           <Outlet />
         </main>
-        <Footer
-          onAdminEntry={() => (admin ? onNavigate('admin') : onAdminLogin())}
-          adminActive={Boolean(admin)}
-        />
+        {isAgentV2Chat ? null : (
+          <Footer
+            onAdminEntry={() => (admin ? onNavigate('admin') : onAdminLogin())}
+            adminActive={Boolean(admin)}
+          />
+        )}
       </div>
     </div>
   );

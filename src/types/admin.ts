@@ -108,6 +108,7 @@ export type AdminFetchTask = {
 export type AdminFetchTaskDetail = AdminFetchTask & {
   inputParams: unknown;
   dispatchPayload: unknown;
+  debugRequestsBase64?: string;
 };
 
 export type AdminFetchTaskSummary = {
@@ -124,7 +125,29 @@ export type AdminFetchTaskSetMode =
   | "trade_dates"
   | "offsets"
   | "trade_dates_with_offsets"
-  | "date_range_with_offsets";
+  | "date_range_with_offsets"
+  | "index_batches"
+  | "trade_dates_with_index_batches"
+  | "date_range_with_index_batches"
+  | "date_range_with_api_offsets";
+
+export type AdminFetchCatalogRuleCondition =
+  | "ALWAYS"
+  | "NEVER"
+  | {
+      operator: "in";
+      path: string;
+      values: string[];
+    }
+  | {
+      operator: "equals";
+      path: string;
+      value: string;
+    }
+  | {
+      operator: "and" | "or";
+      conditions: AdminFetchCatalogRuleCondition[];
+    };
 
 export type AdminFetchCatalogParamField = {
   name: string;
@@ -135,9 +158,9 @@ export type AdminFetchCatalogParamField = {
   placeholder?: string;
   defaultValue?: unknown;
   description?: string;
-  effectiveWhen?: string[] | string;
-  requiredWhen?: string[] | string;
-  ignoredWhen?: string[] | string;
+  effectiveWhen?: AdminFetchCatalogRuleCondition | string[] | string;
+  requiredWhen?: AdminFetchCatalogRuleCondition | string[] | string;
+  ignoredWhen?: AdminFetchCatalogRuleCondition | string[] | string;
   validation?: {
     min?: number;
     max?: number;
@@ -275,6 +298,18 @@ export type AdminFetchJobDetail = AdminFetchJob & {
     taskIntervalMs?: number;
   };
   orchestrationNote?: string;
+};
+
+export type AdminFetchJobStatusSummary = {
+  jobUuid: string;
+  status: string;
+  expandedTaskCount: number;
+  pendingCount: number;
+  runningCount: number;
+  successCount: number;
+  failureCount: number;
+  cancelledCount?: number;
+  updatedAt: string;
 };
 
 export type AdminFetchJobSummary = {

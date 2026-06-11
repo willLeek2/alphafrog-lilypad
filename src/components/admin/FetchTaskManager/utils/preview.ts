@@ -16,6 +16,7 @@ import { buildTaskSpec, buildTaskSetSpec, parseNumber } from "./payload";
 import { createTaskDraft, createTaskSetDraft, buildFetchInfoDraft } from "./draft";
 import { compactDate, formatDateAsCompact, enumerateDates } from "./dates";
 import { enumerateOffsets } from "./offsets";
+import { getTaskFieldSchema } from "./catalog";
 
 export const buildTaskPreviewBlock = (draft: TaskDraft, task: AdminFetchCatalogTask | undefined, index: number): TextPreviewBlock => {
   const spec = buildTaskSpec(draft, task);
@@ -149,6 +150,21 @@ export const buildTaskSetPreviewBlock = (
         })}`
       );
     }
+  } else if (draft.task_set_mode === "date_range_with_api_offsets") {
+    const baseOffset = Number(draft.task_params.offset ?? "0");
+    const step = Number(draft.task_params.limit ?? "2000");
+    const taskCount = Math.max(1, Number(draft.task_params.task_count ?? "1"));
+    for (let i = 0; i < taskCount; i++) {
+      requestLines.push(
+        `请求 ${i + 1}：${describeLeafRequest(draft.task_name, Number(spec.task_sub_type ?? 1), {
+          ...baseParams,
+          start_date: compactDate(draft.date_range.start_date),
+          end_date: compactDate(draft.date_range.end_date),
+          offset: baseOffset + i * step,
+          limit: step,
+        })}`
+      );
+    }
   }
 
   const visibleLines = requestLines.slice(0, 12);
@@ -159,43 +175,17 @@ export const buildTaskSetPreviewBlock = (
     visibleLines.push("当前日期范围或 offset 范围还不完整，暂时无法推导出展开后的叶子请求。");
   }
 
+  const taskSetVariantFields = getTaskFieldSchema(task, Number(draft.task_sub_type));
   const parameterLines = [
     `task_name：${getFieldHelpText("task_name")}`,
     `task_sub_type：${getFieldHelpText("task_sub_type")}`,
     `task_set_mode：${getFieldHelpText("task_set_mode")}`,
+    ...taskSetVariantFields.map((f) => {
+      const helpKey = f.name.replace(/\./g, "_");
+      const helpText = getFieldHelpText(helpKey) || f.description || f.label || "";
+      return `${f.name}：${helpText}`;
+    }),
   ];
-
-  if (
-    draft.task_set_mode === "trade_dates" ||
-    draft.task_set_mode === "trade_dates_with_offsets" ||
-    draft.task_set_mode === "trade_dates_with_index_batches"
-  ) {
-    parameterLines.push(
-      `trade_dates.start_timestamp：${getFieldHelpText("trade_dates_start_timestamp")}`,
-      `trade_dates.end_timestamp：${getFieldHelpText("trade_dates_end_timestamp")}`
-    );
-  }
-  if (
-    draft.task_set_mode === "date_range_with_offsets" ||
-    draft.task_set_mode === "date_range_with_index_batches"
-  ) {
-    parameterLines.push(
-      `date_range.start_date：${getFieldHelpText("date_range_start_date")}`,
-      `date_range.end_date：${getFieldHelpText("date_range_end_date")}`
-    );
-  }
-  if (
-    draft.task_set_mode === "offsets" ||
-    draft.task_set_mode === "trade_dates_with_offsets" ||
-    draft.task_set_mode === "date_range_with_offsets"
-  ) {
-    parameterLines.push(
-      `offset_range.start：${getFieldHelpText("offset_range_start")}`,
-      `offset_range.end：${getFieldHelpText("offset_range_end")}`,
-      `offset_range.step：${getFieldHelpText("offset_range_step")}`
-    );
-  }
-  parameterLines.push(...Object.keys(draft.task_params).map((fieldName) => `${fieldName}：${getFieldHelpText(fieldName)}`));
 
   return {
     key: draft.id,

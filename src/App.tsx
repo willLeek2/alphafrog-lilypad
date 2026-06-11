@@ -164,20 +164,20 @@ const App = () => {
   };
 
   const handleNavigate = useCallback((nextView: ViewKey) => {
-    const path = nextView === "profile" ? "/app/profile" : "/app/admin";
+    const path = nextView === "profile" ? "/app/profile" : "/app/admin/overview";
     window.location.href = path;
   }, []);
 
   const handleAdminNavigate = useCallback(() => {
     if (admin) {
-      window.location.href = "/app/admin";
+      window.location.href = "/app/admin/overview";
     } else {
       window.location.href = "/admin/login";
     }
   }, [admin]);
 
   const handleAdminEntry = useCallback(() => {
-    window.location.href = admin ? "/app/admin" : "/admin/login";
+    window.location.href = admin ? "/app/admin/overview" : "/admin/login";
   }, [admin]);
 
   useEffect(() => {

@@ -6,9 +6,41 @@ import type {
   AdminFetchCatalogResponse,
   AdminFetchCatalogTask,
   AdminFetchCatalogTaskVariant,
+  AdminFetchCatalogRuleCondition,
   AdminFetchTaskSetMode,
 } from "../../../../types/admin";
 import { TASK_SET_MODE_OPTIONS } from "../constants";
+
+export const evaluateCondition = (
+  condition: AdminFetchCatalogRuleCondition | string[] | string | undefined,
+  context: Record<string, unknown>
+): boolean => {
+  if (condition === undefined || condition === "ALWAYS") return true;
+  if (condition === "NEVER") return false;
+  if (Array.isArray(condition)) {
+    const val = String(context["task_set_mode"] ?? "");
+    return condition.includes(val);
+  }
+  if (typeof condition === "string") {
+    const val = String(context["task_set_mode"] ?? "");
+    return condition.split(",").map((s) => s.trim()).includes(val);
+  }
+  if (condition.operator === "in") {
+    const val = String(context[condition.path] ?? "");
+    return condition.values.includes(val);
+  }
+  if (condition.operator === "equals") {
+    const val = String(context[condition.path] ?? "");
+    return val === condition.value;
+  }
+  if (condition.operator === "and") {
+    return condition.conditions.every((c) => evaluateCondition(c, context));
+  }
+  if (condition.operator === "or") {
+    return condition.conditions.some((c) => evaluateCondition(c, context));
+  }
+  return true;
+};
 
 export const getTaskCatalog = (catalog: AdminFetchCatalogResponse | null, taskName: string) =>
   catalog?.taskCatalog.find((item) => item.taskName === taskName);

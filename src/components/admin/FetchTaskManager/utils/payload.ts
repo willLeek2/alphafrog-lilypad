@@ -104,7 +104,8 @@ export const buildTaskSetSpec = (draft: TaskSetDraft, task: AdminFetchCatalogTas
 
   if (
     draft.task_set_mode === "date_range_with_offsets" ||
-    draft.task_set_mode === "date_range_with_index_batches"
+    draft.task_set_mode === "date_range_with_index_batches" ||
+    draft.task_set_mode === "date_range_with_api_offsets"
   ) {
     spec.date_range = {
       start_date: compactDate(draft.date_range.start_date),

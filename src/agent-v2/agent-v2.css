@@ -1,0 +1,26 @@
+/* Overlay-style scrollbars: thin, no scrollbar-gutter reserve (macOS uses overlay by default). */
+.agent-v2-scroll {
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(100, 116, 139, 0.45) transparent;
+}
+
+.agent-v2-scroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.agent-v2-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.agent-v2-scroll::-webkit-scrollbar-thumb {
+  background-color: rgba(100, 116, 139, 0.4);
+  border-radius: 9999px;
+}
+
+.agent-v2-scroll::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(100, 116, 139, 0.65);
+}

@@ -68,3 +68,18 @@ export const getTaskKindLabel = (taskName: string) => TASK_KIND_LABELS[taskName]
 
 export const getTaskSetModeLabel = (mode: string) =>
   TASK_SET_MODE_OPTIONS.find((item) => item.value === mode)?.label ?? mode;
+
+export const decodeDebugRequests = (base64: string): string[] | null => {
+  try {
+    const json = decodeURIComponent(
+      Array.prototype.map.call(atob(base64), (c: string) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2)).join("")
+    );
+    const parsed = JSON.parse(json);
+    if (Array.isArray(parsed) && parsed.every((item) => typeof item === "string")) {
+      return parsed;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+};

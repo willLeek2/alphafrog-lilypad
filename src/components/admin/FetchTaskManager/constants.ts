@@ -41,6 +41,7 @@ export const TASK_SET_MODE_OPTIONS: Array<{ value: AdminFetchTaskSetMode; label:
   { value: "index_batches", label: "按本地指数批次展开" },
   { value: "trade_dates_with_index_batches", label: "日期 × 本地指数批次" },
   { value: "date_range_with_index_batches", label: "固定日期范围 × 本地指数批次" },
+  { value: "date_range_with_api_offsets", label: "固定日期范围 + TuShare 分页" },
 ];
 
 export const PARAM_HELP_TEXT: Record<string, string> = {
@@ -73,6 +74,7 @@ export const PARAM_HELP_TEXT: Record<string, string> = {
   offset_range_start: "task_sets 中 offset 展开的起始值。注意:对于 index_quote/index_weight 任务,这里控制的是对每个指数向 TuShare 发送分页请求的起始 offset,不是本地指数池的偏移量。",
   offset_range_end: "task_sets 中 offset 展开的结束值。注意:对于 index_quote/index_weight 任务,这里控制的是对每个指数向 TuShare 发送分页请求的结束 offset,不是本地指数池的偏移量。",
   offset_range_step: "task_sets 中 offset 展开的步长。注意:对于 index_quote/index_weight 任务,这里的步长决定对每个指数向 TuShare 分页请求的 offset 间隔,通常建议与单页 limit 保持一致。",
+  task_count: "要生成多少个叶子任务。例如设置为 5、limit 为 2000，则会生成 5 个任务，offset 分别为 0/2000/4000/6000/8000。",
 };
 
 export const TASK_KIND_LABELS: Record<string, string> = {
