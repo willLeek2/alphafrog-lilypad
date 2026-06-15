@@ -61,6 +61,12 @@ export const createAppRouter = (
     path: '/',
     element: withSuspense(LandingPage),
   },
+  // Wiki redirect — /wiki goes to /wiki/ which is served by nginx → MkDocs
+  {
+    path: '/wiki',
+    loader: () => { window.location.href = '/wiki/'; return null; },
+    element: null,
+  },
   {
     path: '/legacy/demo-landing',
     element: withSuspense(LegacyDemoLanding),
