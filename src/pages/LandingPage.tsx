@@ -1,4 +1,4 @@
-import { Clock, Database, ExternalLink, FileText, Github } from "lucide-react";
+import { Clock, Database, ExternalLink, FileText, Github, UserPlus } from "lucide-react";
 
 const sections = [
   { id: "intro", label: "概览" },
@@ -74,6 +74,7 @@ const landingThemes = {
     heroCardDesc: "text-slate-600",
     githubButton: "border border-sky-500 bg-sky-600 text-white shadow-sm hover:bg-sky-700",
     docsButton: "border border-sky-200 bg-white text-sky-700 hover:bg-sky-50",
+    trialButton: "border border-sky-500 bg-white text-sky-600 shadow-sm hover:bg-sky-50 font-semibold",
     panel: "border-sky-200 bg-white shadow-sm",
     timelineBorder: "border-sky-300",
     timelineDot: "border-sky-300 bg-white text-sky-700",
@@ -110,6 +111,7 @@ const landingThemes = {
     heroCardDesc: "text-stone-400",
     githubButton: "border border-white bg-white text-stone-900 hover:bg-stone-100",
     docsButton: "border border-stone-500 text-stone-100 hover:bg-stone-700",
+    trialButton: "border border-stone-400 bg-stone-800 text-stone-100 hover:bg-stone-700 font-semibold",
     panel: "border-stone-200 bg-white",
     timelineBorder: "border-stone-300",
     timelineDot: "border-stone-300 bg-white text-stone-600",
@@ -220,6 +222,15 @@ export const LandingPageView = ({ themeName = DEFAULT_LANDING_THEME }: LandingPa
                 >
                   技术文档
                   <ExternalLink className="h-4 w-4" />
+                </a>
+                <a
+                  href="https://v.wjx.cn/vm/Otxk0Zk.aspx"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition ${theme.docsButton}`}
+                >
+                  <UserPlus className="h-4 w-4" />
+                  获取试用用户
                 </a>
               </div>
             </div>
