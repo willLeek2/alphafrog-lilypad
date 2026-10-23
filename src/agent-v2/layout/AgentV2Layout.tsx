@@ -13,6 +13,7 @@ import { useAgentV2Store, type AgentViewMode } from '../store/agentV2Store';
 import { RunDetailPanel } from './RunDetailPanel';
 
 import type { AgentRun } from '../../api/agent';
+import { DependencyReadinessNotice } from '../../components/agent/DependencyReadinessNotice';
 
 interface AgentV2LayoutProps {
   runId: string | null;
@@ -153,6 +154,11 @@ export function AgentV2Layout({
         </aside>
 
         <main className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          {runId && (!execution.dependencyReadiness.runId || execution.dependencyReadiness.runId === runId) && (
+            <div className="max-h-80 shrink-0 overflow-y-auto border-b border-slate-100 p-3">
+              <DependencyReadinessNotice state={execution.dependencyReadiness} />
+            </div>
+          )}
           {viewMode === 'chat' ? (
             <ChatShell />
           ) : (

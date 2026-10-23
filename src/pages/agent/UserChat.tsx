@@ -53,6 +53,7 @@ import {
   type TraceSpanItem,
 } from '../../api/agent';
 import { EventList } from '../../components/agent/EventRenderer';
+import { dependencyEventPayload } from '../../components/agent/dependencyReadiness';
 import type { AgentRunEvent as EventType } from '../../components/agent/types';
 import { getApiBaseUrl } from '../../utils/api';
 import { loadAuth } from '../../utils/storage';
@@ -151,14 +152,18 @@ const getLatestTurnStartSeq = (items: EventType[]): number => {
 };
 
 const toEventItems = (items: AgentRunEvent[]): EventType[] =>
-  items.map((event) => ({
-    id: event.id,
-    runId: event.runId,
-    seq: event.seq,
-    eventType: event.eventType,
-    payloadJson: event.payloadJson,
-    createdAt: event.createdAt,
-  }));
+  items.map((event) => {
+    const payload = dependencyEventPayload(event);
+    return {
+      id: event.id,
+      runId: event.runId,
+      seq: event.seq,
+      eventType: event.eventType,
+      payload,
+      payloadJson: JSON.stringify(payload),
+      createdAt: event.createdAt,
+    };
+  });
 
 const mergeEvents = (current: EventType[], incoming: EventType[]) => {
   if (incoming.length === 0) {
@@ -255,6 +260,8 @@ const UserChat = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastSeqRef = useRef(0);
+  const activeRunIdRef = useRef(urlRunId ?? null);
+  activeRunIdRef.current = urlRunId ?? null;
 
   const [user, setUser] = useState<{ username: string; credit: number } | null>(null);
   const [creditInfo, setCreditInfo] = useState<CreditInfo | null>(null);
@@ -306,7 +313,10 @@ const UserChat = () => {
   const [retrievalOpen, setRetrievalOpen] = useState(false);
   const [selectedRetrieval, setSelectedRetrieval] = useState<string[]>(['news']);
 
-  const runStatus = currentStatus?.status || currentRun?.status || null;
+  const activeStatus = currentStatus?.id === currentRunId && currentRunId === urlRunId ? currentStatus : null;
+  const dependencyPlan = activeStatus?.plan;
+  const activeEvents = events.filter((event) => event.runId === currentRunId && currentRunId === urlRunId);
+  const runStatus = activeStatus?.status || currentRun?.status || null;
   const runTitle = currentRun?.message || sessions.find((item) => item.id === currentRunId)?.title || '未命名会话';
   const showHistory = messageHistory.length > 0;
   const canPause = runStatus === 'RUNNING';
@@ -429,6 +439,7 @@ const UserChat = () => {
   const loadRunStatusSafely = useCallback(async (runId: string) => {
     try {
       const status = await getRunStatus(runId);
+      if (activeRunIdRef.current !== runId || status.id !== runId) return null;
       setCurrentStatus(status);
 
       if (status.status === 'COMPLETED') {
@@ -447,10 +458,12 @@ const UserChat = () => {
   const loadRunEventsSafely = useCallback(async (runId: string, afterSeq: number, replace = false) => {
     try {
       const response = await getRunEvents(runId, afterSeq, 50);
-      const incoming = toEventItems(response.items);
+      if (activeRunIdRef.current !== runId) return 0;
+      const incoming = toEventItems(response.items.filter((event) => event.runId === runId));
 
       let mergedEvents: EventType[] = [];
       setEvents((prev) => {
+        if (activeRunIdRef.current !== runId) return prev;
         mergedEvents = replace ? incoming : mergeEvents(prev, incoming);
         return mergedEvents;
       });
@@ -595,6 +608,7 @@ const UserChat = () => {
     }
 
     setCurrentRunId(urlRunId);
+    setCurrentStatus(null);
     setActionError(null);
     setRailTab('artifacts');
     setTraceItems([]);
@@ -896,9 +910,9 @@ const UserChat = () => {
 
   const displayEvents = (() => {
     if (!showHistory) {
-      return events;
+      return activeEvents;
     }
-    return events
+    return activeEvents
       .filter((event) => !['RUN_RECEIVED', 'FOLLOW_UP_RECEIVED', 'WORKFLOW_COMPLETED'].includes(event.eventType))
       .filter((event) => event.seq > turnStartSeq);
   })();
@@ -1098,7 +1112,7 @@ const UserChat = () => {
                 </div>
               ) : (
                 <>
-                  {!showHistory && <EventList events={events} />}
+                  {!showHistory && <EventList events={activeEvents} plan={dependencyPlan} runId={currentRunId === urlRunId ? currentRunId : null} />}
 
                   {showHistory && (
                     <>
@@ -1127,29 +1141,30 @@ const UserChat = () => {
                         </div>
                       )}
 
-                      {currentTurnMessages.length > 0 && (
+                      {(currentTurnMessages.length > 0 || currentRunId) && (
                         <div className="mt-6 space-y-4 border-t border-sky-100 pt-6">
                           <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-ink-400">
                             <Sparkles size={12} />
                             本轮对话
                           </div>
 
-                          <div className={`flex ${currentTurnMessages[0].role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                          {currentTurnMessages.length > 0 && <div className={`flex ${currentTurnMessages[0].role === 'user' ? 'justify-end' : 'justify-start'}`}>
                             <div className="max-w-[80%] rounded-2xl rounded-br-md bg-sky-600 px-4 py-3 text-white">
                               <div className="whitespace-pre-wrap text-sm">{currentTurnMessages[0].content}</div>
                               <div className="mt-1 text-[10px] text-sky-200">
                                 {currentTurnMessages[0].msgType === 'follow_up' ? '追问' : '初始问题'}
                               </div>
                             </div>
-                          </div>
+                          </div>}
 
-                          {displayEvents.length > 0 && (
+                          {(displayEvents.length > 0 || currentRunId) && (
                             <div className="mt-4 space-y-4">
                               <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-ink-400">
                                 <Terminal size={12} />
                                 执行过程
                               </div>
-                              <EventList events={displayEvents} />
+                              <EventList events={displayEvents} dependencyEvents={activeEvents} plan={dependencyPlan}
+                                runId={currentRunId === urlRunId ? currentRunId : null} />
                             </div>
                           )}
 

@@ -1,4 +1,5 @@
 /** Plan + execution view models — aligned with backend-contract-spec §2.1 / §4 */
+import { createDependencyReadinessState, type DependencyReadinessState } from '../../components/agent/dependencyReadiness';
 
 export type WorkflowKind = 'unknown' | 'linear' | 'dag';
 
@@ -46,6 +47,7 @@ export interface PlanPayload {
 }
 
 export interface ExecutionState {
+  dependencyReadiness: DependencyReadinessState;
   workflow: WorkflowKind;
   executionMode?: string;
   planItems: TodoPlanItem[];
@@ -64,6 +66,7 @@ export interface ExecutionState {
 
 export function createExecutionState(): ExecutionState {
   return {
+    dependencyReadiness: createDependencyReadinessState(),
     workflow: 'unknown',
     planItems: [],
     nodeStatus: {},

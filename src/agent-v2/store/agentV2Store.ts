@@ -77,7 +77,7 @@ function applyExecutionFromAgentEvent(
   if (!isExecutionLifecycleEvent(event.eventType)) {
     return execution;
   }
-  return applyExecutionAgentEvent(execution, event.eventType, event.payload ?? {});
+  return applyExecutionAgentEvent(execution, event);
 }
 
 export const useAgentV2Store = create<AgentV2Store>((set, get) => ({
@@ -131,6 +131,7 @@ export const useAgentV2Store = create<AgentV2Store>((set, get) => ({
 
   applyAgentEvent: (event) => {
     set((state) => {
+      if (state.runId && state.runId !== event.runId) return state;
       const partsState = applyAgentEventPayload(state, event);
       const execution = applyExecutionFromAgentEvent(state.execution, event);
       return { ...partsState, execution };
@@ -138,9 +139,10 @@ export const useAgentV2Store = create<AgentV2Store>((set, get) => ({
   },
 
   applyFrame: (frame) => {
+    if ('runId' in frame.data && get().runId && frame.data.runId !== get().runId) return;
     if (frame.event === 'snapshot' && frame.data.plan) {
       set((state) => ({
-        execution: applySnapshotPlan(state.execution, frame.data.plan),
+        execution: applySnapshotPlan(state.execution, frame.data.plan, frame.data.runId),
       }));
     }
 
@@ -151,10 +153,8 @@ export const useAgentV2Store = create<AgentV2Store>((set, get) => ({
       if (frame.event === 'agent.event') {
         execution = applyExecutionFromAgentEvent(execution, frame.data);
       } else if (frame.event === 'snapshot') {
-        for (const ev of frame.data.events ?? []) {
-          if (isExecutionLifecycleEvent(ev.eventType)) {
-            execution = applyExecutionAgentEvent(execution, ev.eventType, ev.payload ?? {});
-          }
+        for (const ev of [...(frame.data.events ?? [])].sort((a, b) => a.seq - b.seq)) {
+          execution = applyExecutionFromAgentEvent(execution, { ...ev, type: 'agent.event' });
         }
       }
 

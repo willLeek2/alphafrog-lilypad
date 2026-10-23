@@ -1,9 +1,12 @@
+import { useMemo } from 'react';
 import type { AgentRunEvent } from './types';
 import { getEventDisplayType, parsePayload } from './types';
 import { UserMessage } from './UserMessage';
 import { AIMessage } from './AIMessage';
 import { ToolResult } from './ToolResult';
 import { StatusIndicator } from './StatusIndicator';
+import { DependencyReadinessNotice } from './DependencyReadinessNotice';
+import { buildDependencyReadiness } from './dependencyReadiness';
 
 interface EventRendererProps {
   event: AgentRunEvent;
@@ -45,6 +48,9 @@ export function EventRenderer({ event }: EventRendererProps) {
 // 批量渲染事件列表
 interface EventListProps {
   events: AgentRunEvent[];
+  dependencyEvents?: AgentRunEvent[];
+  plan?: unknown;
+  runId?: string | null;
   className?: string;
 }
 
@@ -117,15 +123,20 @@ function processEvents(events: AgentRunEvent[]): AgentRunEvent[] {
   return result;
 }
 
-export function EventList({ events, className = '' }: EventListProps) {
+export function EventList({ events, dependencyEvents = events, plan, runId = null, className = '' }: EventListProps) {
+  const dependencyState = useMemo(
+    () => buildDependencyReadiness(plan, dependencyEvents, runId),
+    [plan, dependencyEvents, runId],
+  );
   const processedEvents = processEvents(events);
   
-  if (processedEvents.length === 0) {
+  if (processedEvents.length === 0 && !runId) {
     return null;
   }
 
   return (
     <div className={`space-y-4 ${className}`}>
+      {runId && <DependencyReadinessNotice state={dependencyState} />}
       {processedEvents.map((event) => (
         <EventRenderer key={`${event.runId}-${event.seq}`} event={event} />
       ))}

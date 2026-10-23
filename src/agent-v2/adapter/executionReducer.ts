@@ -8,6 +8,7 @@ import {
   type WorkflowKind,
 } from '../types/runTypes';
 import { normalizeEventType } from './runAdapter';
+import { applyDependencyEvent, applyDependencySnapshot, type DependencyEvent } from '../../components/agent/dependencyReadiness';
 
 export type { ExecutionState, TodoNodeStatus, TodoNodeSkippedReason, DagRecoveryDecision };
 
@@ -101,20 +102,23 @@ export function applyPlanToExecution(
 
 export function applySnapshotPlan(
   state: ExecutionState,
-  snapshotPlan: unknown
+  snapshotPlan: unknown,
+  runId?: string,
 ): ExecutionState {
   if (!snapshotPlan) {
     return state;
   }
-  return applyPlanToExecution(state, snapshotPlan);
+  const next = applyPlanToExecution(state, snapshotPlan);
+  return { ...next, dependencyReadiness: applyDependencySnapshot(state.dependencyReadiness, snapshotPlan, runId) };
 }
 
 export function applyExecutionAgentEvent(
   state: ExecutionState,
-  eventType: string,
-  payload: Record<string, unknown>
+  event: DependencyEvent,
 ): ExecutionState {
-  const type = normalizeEventType(eventType);
+  const type = normalizeEventType(event.eventType);
+  const payload = (event.payload ?? {}) as Record<string, unknown>;
+  state = { ...state, dependencyReadiness: applyDependencyEvent(state.dependencyReadiness, { ...event, eventType: type }) };
 
   if (type === 'PLAN_READY') {
     const workflowRaw = asString(payload.workflow);

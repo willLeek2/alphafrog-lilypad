@@ -5,6 +5,7 @@ export interface AgentRunEvent {
   runId: string;
   seq: number;
   eventType: string;
+  payload?: Record<string, unknown>;
   payloadJson: string;
   createdAt: string;
 }

@@ -20,6 +20,11 @@ export function isExecutionLifecycleEvent(eventType: string): boolean {
   const t = normalizeEventType(eventType);
   return (
     t === 'PLAN_READY' ||
+    t === 'DEPENDENCIES_CHECKED' ||
+    t === 'TOOL_RESULT_RECORDED' ||
+    t === 'TOOL_CALL_STARTED' ||
+    t === 'TOOL_CALL_FINISHED' ||
+    t === 'WORKFLOW_RESUMED' ||
     t === 'EXECUTION_STARTED' ||
     t === 'DAG_EXECUTION_STARTED' ||
     t === 'DAG_EXECUTION_COMPLETED' ||
