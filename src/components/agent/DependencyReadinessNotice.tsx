@@ -56,7 +56,7 @@ export function DependencyReadinessNotice({ state }: { state: DependencyReadines
   const counts = { AVAILABLE: 0, UNAVAILABLE: 0, UNCHECKED: 0 };
   for (const hint of report?.hints ?? []) counts[hint.status] += 1;
   const covered = (result: DependencyToolResult) => report?.hints.some(
-    (hint) => hint.todoId === result.todoId && hint.toolName === result.toolName,
+    (hint) => !!hint.todoId && !!hint.toolName && hint.todoId === result.todoId && hint.toolName === result.toolName,
   ) ?? false;
 
   return (
@@ -92,7 +92,9 @@ export function DependencyReadinessNotice({ state }: { state: DependencyReadines
                 <li key={`${hint.todoId}-${hint.toolName}-${hint.dependencyId}-${index}`} className="space-y-1 break-words rounded border border-slate-100 bg-white p-2">
                   <div className="flex items-start gap-1.5">
                     <Icon size={14} className={`mt-0.5 shrink-0 ${className}`} />
-                    <span className="min-w-0 flex-1">{hint.todoId ? `步骤 ${hint.todoId} · ` : ''}{hint.toolName} · {hint.dependencyLabel}
+                    <span className="min-w-0 flex-1">
+                      {hint.todoId === '' || hint.toolName === '' ? `本次运行 · ${hint.dependencyLabel}`
+                        : `${hint.todoId ? `步骤 ${hint.todoId}` : '步骤未明确'} · ${hint.toolName ?? '工具未明确'} · ${hint.dependencyLabel}`}
                       <span className={`ml-2 ${className}`}>{label}</span>
                     </span>
                   </div>

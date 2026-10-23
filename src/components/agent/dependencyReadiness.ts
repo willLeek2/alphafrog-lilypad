@@ -1,7 +1,7 @@
 export interface DependencyHint {
-  todoId: string;
-  toolName: string;
-  dependencyId: string;
+  todoId: string | null;
+  toolName: string | null;
+  dependencyId: string | null;
   dependencyLabel: string;
   status: 'AVAILABLE' | 'UNAVAILABLE' | 'UNCHECKED';
   basis: 'REFERENCE_STATE' | 'CONFIG_PRESENT' | 'TOOL_AVAILABILITY' | 'NONE';
@@ -18,13 +18,15 @@ export interface DependencyCheckReport {
   truncated: boolean;
 }
 
+type DependencyResultSource = 'synchronous' | 'wait_member' | 'tool_job_anchor';
+
 export interface DependencyToolResult {
   planGeneration: number | null;
   todoId: string | null;
   toolName: string;
   toolCallId: string | null;
   eventSeq: number;
-  source: string;
+  source: DependencyResultSource;
   businessSuccess: boolean | null;
   executed: boolean | null;
   errorCode: string | null;
@@ -75,6 +77,10 @@ function text(value: unknown, limit = 200): string | null {
   return typeof value === 'string' && value.trim() ? value.slice(0, limit) : null;
 }
 
+function identity(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() && value.length <= 256 ? value : null;
+}
+
 function integer(value: unknown): number | null {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null;
 }
@@ -85,7 +91,7 @@ function boolean(value: unknown): boolean | null {
 
 function strings(value: unknown): string[] {
   return Array.isArray(value)
-    ? value.slice(0, MAX_RESULTS).map((item) => text(item)).filter((item): item is string => item !== null)
+    ? value.slice(0, MAX_RESULTS).map(identity).filter((item): item is string => item !== null)
     : [];
 }
 
@@ -116,10 +122,13 @@ function parseReport(value: unknown): DependencyCheckReport | null {
     if (!hint) continue;
     const basis = hint.basis === 'REFERENCE_STATE' || hint.basis === 'CONFIG_PRESENT' || hint.basis === 'TOOL_AVAILABILITY'
       ? hint.basis : 'NONE';
-    const status = basis !== 'NONE' && (hint.status === 'AVAILABLE' || hint.status === 'UNAVAILABLE') ? hint.status : 'UNCHECKED';
+    const todoId = hint.todoId === '' ? '' : identity(hint.todoId);
+    const toolName = hint.toolName === '' ? '' : identity(hint.toolName);
+    const dependencyId = identity(hint.dependencyId);
+    const status = todoId !== null && toolName !== null && dependencyId !== null && basis !== 'NONE'
+      && (hint.status === 'AVAILABLE' || hint.status === 'UNAVAILABLE') ? hint.status : 'UNCHECKED';
     hints.push({
-      todoId: text(hint.todoId) ?? '', toolName: text(hint.toolName) ?? '未指定工具',
-      dependencyId: text(hint.dependencyId) ?? '', dependencyLabel: text(hint.dependencyLabel) ?? '检查对象未明确',
+      todoId, toolName, dependencyId, dependencyLabel: text(hint.dependencyLabel) ?? '检查对象未明确',
       status, basis, reason: text(hint.reason, 600) ?? '尚未取得检查依据',
     });
   }
@@ -171,7 +180,8 @@ function reconcile(state: DependencyReadinessState, incoming: DependencyToolResu
       if (start) result = { ...result, planGeneration: start.planGeneration, todoId: result.todoId ?? start.todoId };
     }
     const isCurrent = state.prepared && state.planGeneration !== null && result.planGeneration === state.planGeneration
-      && result.eventSeq > state.checkEventSeq && result.eventSeq > state.resumeEventSeq && !!result.todoId && !!result.toolCallId;
+      && result.eventSeq > state.checkEventSeq && result.eventSeq > state.resumeEventSeq && !!result.todoId && !!result.toolCallId
+      && (result.source !== 'wait_member' || result.memberState === 'SUCCEEDED' || result.memberState === 'FAILED');
     (isCurrent ? current : other).push(result);
   }
   const results = mergeResults(current);
@@ -184,18 +194,22 @@ function reconcile(state: DependencyReadinessState, incoming: DependencyToolResu
   };
 }
 
-function parseResult(raw: Record<string, unknown>, eventSeq: number, sync = false): DependencyToolResult | null {
-  const toolName = text(raw.tool_name ?? raw.toolName);
+function parseResult(raw: Record<string, unknown>, eventSeq: number, mode: 'snapshot' | 'recorded' | 'synchronous' = 'snapshot'): DependencyToolResult | null {
+  const sync = mode === 'synchronous';
+  const source = sync ? 'synchronous' : raw.source;
+  if (source !== 'wait_member' && source !== 'tool_job_anchor' && !(source === 'synchronous' && mode !== 'recorded')) return null;
+  const toolName = identity(raw.tool_name ?? raw.toolName);
   if (!toolName || eventSeq <= 0) return null;
+  const memberState = text(raw.member_state, 80);
+  const terminalMember = source !== 'wait_member' || memberState === 'SUCCEEDED' || memberState === 'FAILED';
   // 旧后台完成事件的 success 表示任务进程终态，业务结论由独立结果通知提供。
   const legacyTask = sync && (raw.operation_id != null || raw.task_id != null || raw.status != null);
   return {
-    planGeneration: integer(raw.plan_generation), todoId: text(raw.todo_id ?? raw.todoId), toolName,
-    toolCallId: text(raw.tool_call_id ?? raw.toolCallId, 500), eventSeq,
-    source: sync ? 'synchronous' : text(raw.source) ?? 'recorded',
-    businessSuccess: sync ? (legacyTask ? null : boolean(raw.success)) : boolean(raw.business_success),
+    planGeneration: integer(raw.plan_generation), todoId: identity(raw.todo_id ?? raw.todoId), toolName,
+    toolCallId: identity(raw.tool_call_id ?? raw.toolCallId), eventSeq, source,
+    businessSuccess: !terminalMember ? null : sync ? (legacyTask ? null : boolean(raw.success)) : boolean(raw.business_success),
     executed: boolean(raw.executed), errorCode: text(raw.error_code, 100),
-    taskStatus: text(raw.task_status ?? (legacyTask ? raw.status : null), 80), memberState: text(raw.member_state, 80),
+    taskStatus: text(raw.task_status ?? (legacyTask ? raw.status : null), 80), memberState,
   };
 }
 
@@ -244,11 +258,9 @@ export function applyDependencyEvent(previous: DependencyReadinessState, event: 
   const payload = dependencyEventPayload(event);
   const generation = integer(payload.plan_generation);
   if (event.eventType === 'WORKFLOW_RESUMED') {
-    if (seq <= Math.max(state.resumeEventSeq, state.checkEventSeq)
-      || (generation !== null && state.planGeneration !== null && (generation < state.planGeneration
-        || (state.prepared && generation === state.planGeneration)))) return state;
+    if (seq <= Math.max(state.resumeEventSeq, state.checkEventSeq)) return state;
     return {
-      ...state, planGeneration: generation ?? state.planGeneration, resumeEventSeq: seq,
+      ...state, resumeEventSeq: seq,
       prepared: false, frozenReuse: false, results: [], starts: [], omittedCount: 0, omittedTodoIds: [],
       otherResults: mergeResults([...state.otherResults, ...state.results]).slice(0, MAX_RESULTS),
     };
@@ -275,9 +287,9 @@ export function applyDependencyEvent(previous: DependencyReadinessState, event: 
   if (event.eventType === 'TOOL_CALL_STARTED') {
     if (!state.prepared || state.planGeneration === null || seq <= Math.max(state.checkEventSeq, state.resumeEventSeq)
       || (generation !== null && generation !== state.planGeneration)) return state;
-    const toolCallId = text(payload.tool_call_id ?? payload.toolCallId, 500);
-    const toolName = text(payload.tool_name ?? payload.toolName);
-    const todoId = text(payload.todo_id ?? payload.todoId);
+    const toolCallId = identity(payload.tool_call_id ?? payload.toolCallId);
+    const toolName = identity(payload.tool_name ?? payload.toolName);
+    const todoId = identity(payload.todo_id ?? payload.todoId);
     if (!toolCallId || !toolName || !todoId) return state;
     const start = { toolCallId, toolName, todoId, planGeneration: generation ?? state.planGeneration, eventSeq: seq };
     const starts = [start, ...state.starts.filter((item) => item.toolCallId !== toolCallId || item.toolName !== toolName || item.todoId !== todoId)]
@@ -285,7 +297,7 @@ export function applyDependencyEvent(previous: DependencyReadinessState, event: 
     return reconcile({ ...state, starts });
   }
   if (event.eventType === 'TOOL_CALL_FINISHED' || event.eventType === 'TOOL_RESULT_RECORDED') {
-    const result = parseResult(payload, seq, event.eventType === 'TOOL_CALL_FINISHED');
+    const result = parseResult(payload, seq, event.eventType === 'TOOL_CALL_FINISHED' ? 'synchronous' : 'recorded');
     return result ? reconcile(state, [result]) : state;
   }
   return state;
