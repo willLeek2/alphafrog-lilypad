@@ -17,6 +17,7 @@ import {
 import { isExecutionLifecycleEvent } from '../adapter/runAdapter';
 import { getRunResult } from '../../api/agent';
 import { extractRunResultText } from '../utils/extractRunResult';
+import { applyDependencySnapshot } from '../../components/agent/dependencyReadiness';
 import type { AgentMessagePart } from '../types/messagePart';
 import type { AgentEventPayload, RawSseFrame } from '../types/sse';
 
@@ -49,6 +50,7 @@ interface AgentV2StoreActions {
   reset: (runId?: string | null) => void;
   applyFrame: (frame: RawSseFrame) => void;
   applyAgentEvent: (event: AgentEventPayload) => void;
+  applyDependencyPlan: (runId: string, plan: unknown) => void;
   setConnected: (connected: boolean) => void;
   setStreamError: (error: string | null) => void;
   connectStream: (params: { runId: string; streamUrl?: string; afterSeq?: number }) => Promise<void>;
@@ -135,6 +137,18 @@ export const useAgentV2Store = create<AgentV2Store>((set, get) => ({
       const partsState = applyAgentEventPayload(state, event);
       const execution = applyExecutionFromAgentEvent(state.execution, event);
       return { ...partsState, execution };
+    });
+  },
+
+  applyDependencyPlan: (runId, plan) => {
+    set((state) => {
+      if (state.runId !== runId) return state;
+      return {
+        execution: {
+          ...state.execution,
+          dependencyReadiness: applyDependencySnapshot(state.execution.dependencyReadiness, plan, runId),
+        },
+      };
     });
   },
 

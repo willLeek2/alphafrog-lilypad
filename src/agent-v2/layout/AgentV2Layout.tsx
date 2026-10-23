@@ -1,5 +1,5 @@
 import '../agent-v2.css';
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { ComposerPrimitive } from '@assistant-ui/react';
 import { Link } from 'react-router-dom';
 import { deriveIsRunning } from '../adapter/convertRunToThreadMessages';
@@ -47,6 +47,7 @@ export function AgentV2Layout({
   const controlError = useAgentV2Store((s) => s.controlError);
   const selectedTodoId = useAgentV2Store((s) => s.selectedTodoId);
   const setSelectedTodoId = useAgentV2Store((s) => s.setSelectedTodoId);
+  const applyDependencyPlan = useAgentV2Store((s) => s.applyDependencyPlan);
   const {
     execution,
     planItems,
@@ -63,6 +64,12 @@ export function AgentV2Layout({
     runId,
     Boolean(runId) && isRunning
   );
+
+  useEffect(() => {
+    if (runId && restStatus?.id === runId) {
+      applyDependencyPlan(runId, restStatus.plan);
+    }
+  }, [runId, restStatus, applyDependencyPlan]);
 
   const tab = (mode: AgentViewMode, label: string) => (
     <button
