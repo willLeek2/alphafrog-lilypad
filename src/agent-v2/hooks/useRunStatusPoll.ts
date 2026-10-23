@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
 import { getRunStatus, type AgentRunStatus } from '../../api/agent';
 
-/** Light poll for REST status when SSE plan/progress may lag (Phase 2a). */
+/** Read the selected run immediately; poll only while enabled. */
 export function useRunStatusPoll(runId: string | null, enabled: boolean, intervalMs = 4000) {
   const [status, setStatus] = useState<AgentRunStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!runId || !enabled) {
+    if (!runId) {
       setStatus(null);
       setError(null);
       return;
@@ -30,13 +30,13 @@ export function useRunStatusPoll(runId: string | null, enabled: boolean, interva
     };
 
     void fetchStatus();
-    const timer = setInterval(() => {
+    const timer = enabled ? setInterval(() => {
       void fetchStatus();
-    }, intervalMs);
+    }, intervalMs) : null;
 
     return () => {
       cancelled = true;
-      clearInterval(timer);
+      if (timer !== null) clearInterval(timer);
     };
   }, [runId, enabled, intervalMs]);
 
