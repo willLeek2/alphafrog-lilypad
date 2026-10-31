@@ -921,8 +921,8 @@ const UserChat = () => {
 
   return (
     <UserLayout>
-      <div className="flex h-full gap-6 overflow-hidden">
-        <div className="flex w-64 flex-shrink-0 flex-col rounded-lg border border-sky-100 bg-white shadow-sm">
+      <div className="flex min-w-0 flex-col gap-3 lg:h-full lg:flex-row lg:gap-6 lg:overflow-hidden">
+        <div className="flex w-full flex-shrink-0 flex-col rounded-lg border border-sky-100 bg-white shadow-sm lg:w-64">
           <div className="border-b border-sky-50 p-4">
             <button
               onClick={handleNewChat}
@@ -933,7 +933,7 @@ const UserChat = () => {
             </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-2">
+          <div className="min-h-0 max-h-40 flex-1 overflow-y-auto p-2 lg:max-h-none">
             <h3 className="mb-2 px-2 text-xs font-semibold uppercase tracking-wider text-ink-400">最近记录</h3>
             <div className="space-y-1">
               {sessions.map((session) => (
@@ -984,9 +984,9 @@ const UserChat = () => {
 
         <div className="flex min-w-0 flex-1 flex-col rounded-lg border border-sky-100 bg-white shadow-sm">
           {currentRunId ? (
-            <div className="border-b border-sky-100 px-6 py-4">
+            <div className="border-b border-sky-100 px-3 py-3 lg:px-6 lg:py-4">
               <div className="flex flex-wrap items-start justify-between gap-4">
-                <div className="min-w-0">
+                <div className="min-w-0 max-w-full">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className={`rounded-full border px-2.5 py-1 text-xs font-medium ${statusUi.className}`}>
                       {statusUi.label}
@@ -997,7 +997,7 @@ const UserChat = () => {
                   </div>
 
                   {isEditingTitle ? (
-                    <div className="mt-3 flex items-center gap-2">
+                    <div className="mt-3 flex max-w-full items-center gap-2">
                       <input
                         value={titleDraft}
                         onChange={(event) => setTitleDraft(event.target.value)}
@@ -1010,7 +1010,7 @@ const UserChat = () => {
                             setTitleDraft(runTitle);
                           }
                         }}
-                        className="w-full max-w-xl rounded-xl border border-sky-200 px-3 py-2 text-sm text-ink-900 outline-none focus:border-sky-400"
+                        className="min-w-0 w-full max-w-xl rounded-xl border border-sky-200 px-3 py-2 text-sm text-ink-900 outline-none focus:border-sky-400"
                         placeholder="输入新的会话标题"
                         autoFocus
                       />
@@ -1034,15 +1034,15 @@ const UserChat = () => {
                   ) : (
                     <button
                       onClick={() => setIsEditingTitle(true)}
-                      className="mt-3 flex max-w-xl items-center gap-2 text-left"
+                      className="mt-3 flex min-w-0 max-w-full items-center gap-2 text-left lg:max-w-xl"
                     >
-                      <h2 className="truncate text-2xl font-semibold text-ink-900">{runTitle}</h2>
-                      <PencilLine size={16} className="text-ink-300" />
+                      <h2 className="min-w-0 truncate text-xl font-semibold text-ink-900 lg:text-2xl">{runTitle}</h2>
+                      <PencilLine size={16} className="shrink-0 text-ink-300" />
                     </button>
                   )}
 
                   <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-ink-500">
-                    <span>Run ID: {currentRunId}</span>
+                    <span className="max-w-full break-all">Run ID: {currentRunId}</span>
                     <span>阶段: {currentStatus?.phase || '--'}</span>
                     <span>当前工具: {currentStatus?.currentTool || '--'}</span>
                     <span>累计消耗: {currentStatus?.totalCreditsConsumed ?? 0}</span>
@@ -1086,7 +1086,7 @@ const UserChat = () => {
           ) : null}
 
           <div className="flex min-h-0 flex-1 flex-col">
-            <div className="flex-1 overflow-y-auto bg-slate-50/30 p-6 pb-20">
+            <div className="flex-1 overflow-y-auto bg-slate-50/30 p-3 pb-20 lg:p-6 lg:pb-20">
               {!currentRunId && !showHistory && events.length === 0 ? (
                 <div className="flex h-full flex-col items-center justify-center space-y-8">
                   <div className="space-y-4 text-center">
@@ -1201,8 +1201,8 @@ const UserChat = () => {
             </div>
 
             <div className="border-t border-sky-100 bg-white p-4">
-              <div className="mb-3 flex items-center justify-between px-1">
-                <div className="flex items-center gap-2">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2 px-1">
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
                   <div className="relative">
                     <button
                       onClick={() => setModelDropdownOpen((prev) => !prev)}
@@ -1275,7 +1275,7 @@ const UserChat = () => {
                   ) : null}
                 </div>
 
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-3">
                   <div className="relative">
                     <button
                       onClick={() => setWebSearchDropdownOpen((prev) => !prev)}
@@ -1445,7 +1445,7 @@ const UserChat = () => {
                         }
                       }}
                       placeholder="继续追问..."
-                      className="flex-1 bg-transparent px-4 py-3 text-sm text-ink-900 outline-none placeholder:text-ink-400"
+                      className="min-w-0 flex-1 bg-transparent px-4 py-3 text-sm text-ink-900 outline-none placeholder:text-ink-400"
                       disabled={isFollowUpLoading}
                     />
                     <button
@@ -1479,7 +1479,7 @@ const UserChat = () => {
                         }
                       }}
                       placeholder="让 AlphaFrog 帮您分析市场..."
-                      className="flex-1 bg-transparent py-3 text-sm text-ink-900 outline-none placeholder:text-ink-400"
+                      className="min-w-0 flex-1 bg-transparent py-3 text-sm text-ink-900 outline-none placeholder:text-ink-400"
                       disabled={isCreatingRun}
                     />
                     <button
@@ -1499,7 +1499,7 @@ const UserChat = () => {
           </div>
         </div>
 
-        <div className="flex w-80 flex-shrink-0 flex-col rounded-lg border border-sky-100 bg-white shadow-sm">
+        <div className="flex min-w-0 w-full flex-shrink-0 flex-col rounded-lg border border-sky-100 bg-white shadow-sm lg:w-80">
           <div className="border-b border-sky-50 p-2">
             <div className="grid grid-cols-2 gap-2">
               <button

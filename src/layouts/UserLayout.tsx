@@ -10,6 +10,8 @@ const UserLayout: React.FC<UserLayoutProps> = ({ children }) => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const location = useLocation();
   const isAgentV2Chat = location.pathname.startsWith('/app/chat/v2');
+  const isLegacyAgentChat = location.pathname === '/app/chat'
+    || (location.pathname.startsWith('/app/chat/') && !isAgentV2Chat);
 
   const navItems = [
     { icon: LayoutDashboard, label: '概览仪表盘', path: '/app/dashboard', disabled: false },
@@ -26,24 +28,29 @@ const UserLayout: React.FC<UserLayoutProps> = ({ children }) => {
       {/* Sidebar */}
       <aside 
         className={`${
-          sidebarOpen ? 'w-64' : 'w-20'
+          isLegacyAgentChat
+            ? sidebarOpen ? 'w-16 lg:w-64' : 'w-16 lg:w-20'
+            : sidebarOpen ? 'w-64' : 'w-20'
+        } ${isLegacyAgentChat ? 'shrink-0' : ''
         } flex flex-col border-r border-sky-100 bg-white transition-all duration-300 ease-in-out`}
       >
-        <div className="flex h-14 items-center justify-between border-b border-sky-50 px-4">
+        <div className={`flex h-14 items-center justify-between border-b border-sky-50 ${isLegacyAgentChat ? 'px-2 lg:px-4' : 'px-4'}`}>
           {sidebarOpen && (
-            <span className="text-lg font-semibold tracking-tight text-ink-900 font-display">
+            <span className={`${isLegacyAgentChat ? 'hidden lg:inline' : ''} text-lg font-semibold tracking-tight text-ink-900 font-display`}>
               Agent分析
             </span>
           )}
           <button 
             onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="rounded-lg p-1.5 text-ink-700 hover:bg-sky-50"
+            aria-label={isLegacyAgentChat ? sidebarOpen ? '收起导航' : '展开导航' : undefined}
+            aria-expanded={isLegacyAgentChat ? sidebarOpen : undefined}
+            className={`${isLegacyAgentChat ? 'hidden lg:inline-flex' : ''} rounded-lg p-1.5 text-ink-700 hover:bg-sky-50`}
           >
             {sidebarOpen ? <ChevronLeft size={20} /> : <ChevronRight size={20} />}
           </button>
         </div>
 
-        <nav className="flex-1 space-y-1 p-3">
+        <nav className={`flex-1 space-y-1 ${isLegacyAgentChat ? 'p-2 lg:p-3' : 'p-3'}`}>
           {navItems.map((item, index) => {
             const isActive = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
             const Component = item.disabled ? 'div' : Link;
@@ -51,7 +58,9 @@ const UserLayout: React.FC<UserLayoutProps> = ({ children }) => {
               <Component
                 key={index}
                 to={item.path}
-                className={`flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors ${
+                aria-label={isLegacyAgentChat ? item.label : undefined}
+                title={isLegacyAgentChat ? item.label : undefined}
+                className={`flex items-center gap-3 rounded-lg py-2.5 transition-colors ${isLegacyAgentChat ? 'justify-center px-2 lg:justify-start lg:px-3' : 'px-3'} ${
                   item.disabled 
                     ? 'text-ink-300 cursor-not-allowed'
                     : isActive
@@ -60,24 +69,24 @@ const UserLayout: React.FC<UserLayoutProps> = ({ children }) => {
                 }`}
               >
                 <item.icon size={20} className={item.disabled ? 'text-ink-300' : (isActive ? 'text-sky-600' : 'text-ink-400')} />
-                {sidebarOpen && <span>{item.label}</span>}
+                {sidebarOpen && <span className={isLegacyAgentChat ? 'hidden lg:inline' : undefined}>{item.label}</span>}
               </Component>
             );
           })}
         </nav>
 
-        <div className="border-t border-sky-50 p-3">
-          <Link to="/logout" className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-ink-700 hover:bg-red-50 hover:text-red-600 transition-colors">
+        <div className={`border-t border-sky-50 ${isLegacyAgentChat ? 'p-2 lg:p-3' : 'p-3'}`}>
+          <Link to="/logout" aria-label={isLegacyAgentChat ? '退出登录' : undefined} title={isLegacyAgentChat ? '退出登录' : undefined} className={`flex items-center gap-3 rounded-lg py-2.5 text-ink-700 hover:bg-red-50 hover:text-red-600 transition-colors ${isLegacyAgentChat ? 'justify-center px-2 lg:justify-start lg:px-3' : 'px-3'}`}>
             <LogOut size={20} />
-            {sidebarOpen && <span>退出登录</span>}
+            {sidebarOpen && <span className={isLegacyAgentChat ? 'hidden lg:inline' : undefined}>退出登录</span>}
           </Link>
         </div>
       </aside>
 
       {/* Main Content */}
-      <main className="flex flex-1 flex-col overflow-hidden">
+      <main className={`flex flex-1 flex-col overflow-hidden ${isLegacyAgentChat ? 'min-w-0' : ''}`}>
         {/* Light Header - 只保留页面标题 */}
-        <header className="flex h-12 items-center border-b border-sky-100 bg-white px-6">
+        <header className={`flex h-12 items-center border-b border-sky-100 bg-white ${isLegacyAgentChat ? 'px-3 lg:px-6' : 'px-6'}`}>
           <h2 className="text-base font-medium text-ink-700">
             {navItems.find(i => location.pathname === i.path || location.pathname.startsWith(i.path + '/'))?.label || 'Agent分析'}
           </h2>
@@ -88,7 +97,9 @@ const UserLayout: React.FC<UserLayoutProps> = ({ children }) => {
           className={
             isAgentV2Chat
               ? 'flex min-h-0 flex-1 flex-col overflow-hidden'
-              : 'flex-1 overflow-auto p-6'
+              : isLegacyAgentChat
+                ? 'min-w-0 flex-1 overflow-auto p-2 lg:p-6'
+                : 'flex-1 overflow-auto p-6'
           }
         >
           {children}
