@@ -25,6 +25,7 @@ export function isExecutionLifecycleEvent(eventType: string): boolean {
     t === 'TOOL_CALL_STARTED' ||
     t === 'TOOL_CALL_FINISHED' ||
     t === 'WORKFLOW_RESUMED' ||
+    t === 'WORKFLOW_RESTARTED' ||
     t === 'EXECUTION_STARTED' ||
     t === 'DAG_EXECUTION_STARTED' ||
     t === 'DAG_EXECUTION_COMPLETED' ||
