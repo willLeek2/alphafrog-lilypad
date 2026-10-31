@@ -176,6 +176,29 @@ function mergeResults(results: DependencyToolResult[]): DependencyToolResult[] {
   return [...merged.values()].sort((a, b) => b.eventSeq - a.eventSeq);
 }
 
+function parseCallStart(value: unknown): CallStart | null {
+  const raw = record(value);
+  if (!raw) return null;
+  const planGeneration = integer(raw.plan_generation);
+  const eventSeq = integer(raw.event_seq);
+  const todoId = identity(raw.todo_id);
+  const toolName = identity(raw.tool_name);
+  const toolCallId = identity(raw.tool_call_id);
+  return planGeneration !== null && eventSeq !== null && eventSeq > 0 && todoId && toolName && toolCallId
+    ? { planGeneration, eventSeq, todoId, toolName, toolCallId } : null;
+}
+
+function mergeStarts(starts: CallStart[], generation: number, resultAfterSeq: number): CallStart[] {
+  const merged = new Map<string, CallStart>();
+  for (const start of starts) {
+    if (start.planGeneration !== generation || start.eventSeq <= resultAfterSeq) continue;
+    const key = JSON.stringify([start.planGeneration, start.todoId, start.toolName, start.toolCallId]);
+    const previous = merged.get(key);
+    if (!previous || start.eventSeq > previous.eventSeq) merged.set(key, start);
+  }
+  return [...merged.values()].sort((a, b) => b.eventSeq - a.eventSeq).slice(0, MAX_STARTS);
+}
+
 function reconcile(state: DependencyReadinessState, incoming: DependencyToolResult[] = []): DependencyReadinessState {
   const current: DependencyToolResult[] = [];
   const other: DependencyToolResult[] = [];
@@ -242,10 +265,23 @@ export function applyDependencySnapshot(
   const checkSeq = integer(view.check_event_seq) ?? 0;
   const resultAfterSeq = integer(view.result_after_seq) ?? checkSeq;
   const resumeSeq = integer(view.resume_event_seq) ?? 0;
+  // 快照只提供服务端已核实的本轮进行中身份，补足首包最近事件之外的真实开始事实。
+  const snapshotStarts = view.prepared === true && Array.isArray(view.call_starts)
+    ? view.call_starts.slice(0, MAX_RESULTS).flatMap((item) => {
+      const start = parseCallStart(item);
+      return start ? [start] : [];
+    }) : [];
   if (generation === null || (state.planGeneration !== null && generation < state.planGeneration)) return state;
   if (generation === state.planGeneration && (resultAfterSeq < state.resultAfterSeq
     || Math.max(checkSeq, resumeSeq) < Math.max(state.checkEventSeq, state.resumeEventSeq))) {
-    return { ...state, report };
+    // 同一执行边界的较早快照仍能补足开始事实，不能因此回退报告通知或恢复位置。
+    const sameBoundary = resultAfterSeq === state.resultAfterSeq;
+    return reconcile({
+      ...state, report,
+      requiresStartProof: state.requiresStartProof || (sameBoundary && view.requires_start_proof === true),
+      starts: sameBoundary
+        ? mergeStarts([...state.starts, ...snapshotStarts], generation, resultAfterSeq) : state.starts,
+    });
   }
   const changed = generation !== state.planGeneration || resultAfterSeq > state.resultAfterSeq;
   const keepBoundary = state.prepared && !changed;
@@ -258,7 +294,7 @@ export function applyDependencySnapshot(
     requiresStartProof: state.requiresStartProof || view.requires_start_proof === true,
     prepared: keepBoundary || (view.prepared === true && checkSeq > 0),
     frozenReuse: !keepBoundary || checkSeq >= state.checkEventSeq ? view.frozen_reuse === true : state.frozenReuse,
-    starts: state.starts.filter((item) => item.planGeneration === generation && item.eventSeq > resultAfterSeq),
+    starts: mergeStarts([...state.starts, ...snapshotStarts], generation, resultAfterSeq),
     omittedCount: Math.max(changed ? 0 : state.omittedCount, integer(view.omitted_count) ?? 0),
     omittedTodoIds: strings(view.omitted_todo_ids),
   };
