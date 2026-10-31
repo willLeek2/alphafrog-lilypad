@@ -254,9 +254,8 @@ export function applyDependencySnapshot(
     checkEventSeq: generation === state.planGeneration ? Math.max(state.checkEventSeq, checkSeq) : checkSeq,
     resultAfterSeq,
     resumeEventSeq: Math.max(state.resumeEventSeq, resumeSeq),
-    // 重入已有快照时可能只有最近事件，实时结果仍需开始证据；快照结果使用后端已核对的归属。
-    requiresStartProof: state.requiresStartProof || (state.planGeneration === null && resumeSeq > 0)
-      || (state.resultAfterSeq > 0 && resultAfterSeq > state.resultAfterSeq),
+    // 是否重新执行采用明确的后端事实或已收到的重启事件，不从普通恢复序号推断。
+    requiresStartProof: state.requiresStartProof || view.requires_start_proof === true,
     prepared: keepBoundary || (view.prepared === true && checkSeq > 0),
     frozenReuse: !keepBoundary || checkSeq >= state.checkEventSeq ? view.frozen_reuse === true : state.frozenReuse,
     starts: state.starts.filter((item) => item.planGeneration === generation && item.eventSeq > resultAfterSeq),
