@@ -6,6 +6,10 @@ type ApiOptions = RequestInit & {
 };
 
 const apiBaseUrl = (() => {
+  // 本地开发保持浏览器同源请求，由 Vite 代理到配置的后端。
+  if (import.meta.env.DEV) {
+    return "";
+  }
   const raw = import.meta.env.VITE_API_BASE_URL as string | undefined;
   if (!raw) {
     return "";
